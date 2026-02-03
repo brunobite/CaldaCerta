@@ -1,0 +1,65 @@
+# 🚀 INÍCIO RÁPIDO - CALDACERTA
+
+## ⚡ 3 Passos para Começar
+
+### 1️⃣ Instalar Node.js
+Baixe em: https://nodejs.org/
+Escolha a versão LTS (recomendada)
+
+### 2️⃣ Instalar Dependências
+Abra o terminal/CMD na pasta do projeto:
+
+```bash
+cd server
+npm install
+```
+
+### 3️⃣ Iniciar o Servidor
+```bash
+npm start
+```
+
+Ou no Windows, dê duplo clique em: `INICIAR.bat`
+
+### 4️⃣ Abrir no Navegador
+```
+http://localhost:3000
+```
+
+## 📊 Importar seus Produtos
+
+### Preparar Planilha Excel
+Crie arquivo `produtos.xlsx` com colunas:
+- nome
+- marca  
+- formulacao
+- tipo
+- ph
+- ingrediente_ativo
+- concentracao
+
+Veja exemplos em: `PLANILHA-PRODUTOS.md`
+
+### Importar
+```bash
+cd server
+node importar-produtos.js
+```
+
+## ✅ Pronto!
+
+Agora você pode:
+- ✅ Cadastrar clientes e propriedades
+- ✅ Selecionar produtos do banco
+- ✅ Criar simulações de caldas
+- ✅ Gerar PDFs profissionais
+- ✅ Consultar histórico completo
+
+## 📞 Problemas?
+
+Consulte o README.md para mais detalhes.
+
+---
+
+**Versão com Banco de Dados Local**  
+Todos os dados ficam salvos no seu computador! 💾

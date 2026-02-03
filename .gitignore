@@ -1,0 +1,29 @@
+# Node modules
+node_modules/
+server/node_modules/
+
+# Env
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Uploads (gerados em runtime)
+server/uploads/
+uploads/
+
+# Database (SQLite local)
+database/*.db
+database/*.db-journal
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

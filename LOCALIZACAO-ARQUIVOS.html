@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗺️ Localização dos Arquivos - CaldaCerta</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 3rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 2.5rem;
+        }
+        .alerta {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border-radius: 8px;
+        }
+        .alerta h2 {
+            color: #92400e;
+            margin-bottom: 0.5rem;
+        }
+        .arquivo {
+            background: #f0fdf4;
+            border-left: 4px solid #10b981;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 8px;
+        }
+        .arquivo h3 {
+            color: #065f46;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .arquivo code {
+            background: #1f2937;
+            color: #10b981;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        .estrutura {
+            background: #1f2937;
+            color: #10b981;
+            padding: 2rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+        }
+        .passo {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+        }
+        .passo h4 {
+            color: #1e40af;
+            margin-bottom: 0.5rem;
+        }
+        .destaque {
+            background: #fef2f2;
+            border: 2px solid #ef4444;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+            text-align: center;
+        }
+        .destaque h2 {
+            color: #dc2626;
+            margin-bottom: 1rem;
+        }
+        ul { margin-left: 1.5rem; }
+        li { margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗺️ Localização dos Arquivos</h1>
+        
+        <div class="alerta">
+            <h2>✅ TODOS OS ARQUIVOS FORAM CRIADOS!</h2>
+            <p>Os arquivos que você procura estão nas seguintes localizações:</p>
+        </div>
+
+        <div class="arquivo">
+            <h3>1️⃣ INICIAR.bat</h3>
+            <p><strong>📍 Localização:</strong> <code>/Calda-Certa/INICIAR.bat</code></p>
+            <p><strong>📝 Função:</strong> Inicia o servidor automaticamente no Windows</p>
+            <p><strong>💡 Como usar:</strong> Dê DUPLO CLIQUE neste arquivo!</p>
+        </div>
+
+        <div class="arquivo">
+            <h3>2️⃣ importar-produtos.js</h3>
+            <p><strong>📍 Localização:</strong> <code>/Calda-Certa/server/importar-produtos.js</code></p>
+            <p><strong>📝 Função:</strong> Script para importar produtos de planilha Excel</p>
+            <p><strong>💡 Como usar:</strong> <code>node importar-produtos.js</code></p>
+        </div>
+
+        <div class="arquivo">
+            <h3>3️⃣ index.html (NOVO - Integrado com API)</h3>
+            <p><strong>📍 Localização:</strong> <code>/Calda-Certa/web/index.html</code></p>
+            <p><strong>📝 Função:</strong> Interface principal do sistema (versão com banco de dados)</p>
+            <p><strong>⚠️ IMPORTANTE:</strong> Este é o arquivo ATUALIZADO que se conecta com o servidor!</p>
+        </div>
+
+        <div class="arquivo">
+            <h3>4️⃣ api-config.js</h3>
+            <p><strong>📍 Localização:</strong> <code>/Calda-Certa/web/api-config.js</code></p>
+            <p><strong>📝 Função:</strong> Configuração dos endpoints da API</p>
+            <p><strong>💡 Info:</strong> Já está linkado no index.html</p>
+        </div>
+
+        <div class="destaque">
+            <h2>📁 ESTRUTURA COMPLETA</h2>
+            <p>Veja abaixo como está organizado:</p>
+        </div>
+
+        <div class="estrutura">
+Calda-Certa/
+│
+├── INICIAR.bat              ⭐ ESTÁ AQUI!
+├── INICIO-RAPIDO.txt
+├── README.md
+├── INSTALACAO.md
+├── PLANILHA-PRODUTOS.md
+├── ONDE-ESTAO-OS-ARQUIVOS.txt
+│
+├── server/                  📁 BACKEND
+│   ├── server.js           ⭐ Servidor principal
+│   ├── package.json        ⭐ Dependências
+│   ├── importar-produtos.js ⭐ ESTÁ AQUI!
+│   ├── produtos-exemplo.csv
+│   └── verificar.js
+│
+├── web/                     📁 FRONTEND
+│   ├── index.html          ⭐ NOVO! ESTÁ AQUI!
+│   └── api-config.js       ⭐ ESTÁ AQUI!
+│
+└── database/                📁 BANCO DE DADOS
+    └── (vazio - será criado)
+        </div>
+
+        <h2 style="color: #667eea; margin-top: 2rem; margin-bottom: 1rem;">🚀 Como Começar</h2>
+
+        <div class="passo">
+            <h4>PASSO 1: Instale o Node.js</h4>
+            <p>📥 Download: <a href="https://nodejs.org/" target="_blank">https://nodejs.org/</a></p>
+            <p>Escolha a versão LTS (recomendada)</p>
+        </div>
+
+        <div class="passo">
+            <h4>PASSO 2: Abra a pasta do projeto</h4>
+            <p>Navegue até onde você salvou a pasta <code>Calda-Certa</code></p>
+        </div>
+
+        <div class="passo">
+            <h4>PASSO 3: Inicie o servidor</h4>
+            <p><strong>WINDOWS:</strong> Dê duplo clique em <code>INICIAR.bat</code></p>
+            <p><strong>Ou manualmente:</strong></p>
+            <ul>
+                <li>Abra CMD/Terminal na pasta <code>server</code></li>
+                <li>Digite: <code>npm install</code></li>
+                <li>Digite: <code>npm start</code></li>
+            </ul>
+        </div>
+
+        <div class="passo">
+            <h4>PASSO 4: Acesse o sistema</h4>
+            <p>Abra seu navegador e acesse:</p>
+            <p><strong><a href="http://localhost:3000" target="_blank">http://localhost:3000</a></strong></p>
+        </div>
+
+        <div style="background: #dcfce7; padding: 2rem; border-radius: 8px; margin-top: 2rem; text-align: center;">
+            <h2 style="color: #166534; margin-bottom: 1rem;">✅ Está Pronto!</h2>
+            <p>Todos os arquivos estão criados e funcionando.</p>
+            <p>Siga os passos acima e seu sistema estará rodando!</p>
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1.5rem; background: #f3f4f6; border-radius: 8px;">
+            <h3 style="color: #374151; margin-bottom: 1rem;">📞 Precisa de Ajuda?</h3>
+            <ul>
+                <li><strong>README.md</strong> - Documentação completa</li>
+                <li><strong>INSTALACAO.md</strong> - Guia visual passo a passo</li>
+                <li><strong>INICIO-RAPIDO.txt</strong> - Começar rapidamente</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
