@@ -4,14 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CaldaCerta Pro - Completo</title>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;600;800&display=swap" rel="stylesheet">
-    
-    <!-- API Configuration -->
+
+    <!-- API Configuration (precisa existir o objeto global API e o window.API_BASE) -->
     <script src="api-config.js"></script>
 
     <style>
@@ -30,14 +32,14 @@
             --warning: #ea580c;
         }
 
-        * { 
-            box-sizing: border-box; 
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
-        
-        body { 
-            font-family: 'Sora', sans-serif; 
+
+        body {
+            font-family: 'Sora', sans-serif;
             background: linear-gradient(135deg, #fafaf9 0%, #f5f5f4 100%);
             color: var(--text);
             min-height: 100vh;
@@ -116,7 +118,7 @@
         .pb-1 { padding-bottom: 0.25rem; }
 
         /* Forms */
-        .input-box { 
+        .input-box {
             width: 100%;
             padding: 1rem;
             border: 2px solid var(--border);
@@ -129,18 +131,18 @@
             outline: none;
             font-family: 'Sora', sans-serif;
         }
-        
-        .input-box:focus { 
+
+        .input-box:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
             transform: translateY(-2px);
         }
-        
+
         .input-box:hover:not(:focus) {
             border-color: var(--primary-light);
         }
 
-        .label-text { 
+        .label-text {
             display: block;
             font-size: 0.75rem;
             font-weight: 700;
@@ -152,7 +154,7 @@
         }
 
         /* Cards */
-        .card { 
+        .card {
             background: var(--card);
             padding: 2rem;
             border-radius: 20px;
@@ -200,9 +202,7 @@
             box-shadow: 0 6px 20px rgba(15, 118, 110, 0.4);
         }
 
-        .btn-primary:active {
-            transform: translateY(0);
-        }
+        .btn-primary:active { transform: translateY(0); }
 
         .btn-primary:disabled {
             opacity: 0.5;
@@ -253,9 +253,7 @@
             pointer-events: none;
         }
 
-        .menu-card:hover::before {
-            opacity: 0.05;
-        }
+        .menu-card:hover::before { opacity: 0.05; }
 
         .menu-card:hover {
             border-color: var(--primary);
@@ -277,15 +275,11 @@
             flex-shrink: 0;
         }
 
-        .menu-card:hover .icon-box {
-            transform: scale(1.1) rotate(5deg);
-        }
+        .menu-card:hover .icon-box { transform: scale(1.1) rotate(5deg); }
 
-        .icon-box-green {
-            background: linear-gradient(135deg, #10b981, #059669);
-        }
+        .icon-box-green { background: linear-gradient(135deg, #10b981, #059669); }
 
-        /* Product Items - Drag and Drop */
+        /* Product Items */
         .product-item {
             background: white;
             padding: 1rem;
@@ -303,10 +297,7 @@
             touch-action: none;
         }
 
-        .product-item.sortable-ghost {
-            opacity: 0.4;
-            background: #f0fdfa;
-        }
+        .product-item.sortable-ghost { opacity: 0.4; background: #f0fdfa; }
 
         .product-item.sortable-drag {
             opacity: 1;
@@ -333,11 +324,8 @@
             touch-action: none;
         }
 
-        .drag-handle:active {
-            cursor: grabbing;
-        }
+        .drag-handle:active { cursor: grabbing; }
 
-        /* Container com overflow para mobile */
         .ordem-scroll-container {
             overflow-x: auto;
             margin-left: -1rem;
@@ -347,9 +335,7 @@
             -webkit-overflow-scrolling: touch;
         }
 
-        .ordem-inner {
-            min-width: 600px;
-        }
+        .ordem-inner { min-width: 600px; }
 
         /* Badges */
         .badge {
@@ -442,28 +428,11 @@
             border-left: 4px solid;
         }
 
-        .alert-success {
-            background: #d1fae5;
-            border-color: #10b981;
-            color: #065f46;
-        }
+        .alert-success { background: #d1fae5; border-color: #10b981; color: #065f46; }
+        .alert-warning { background: #fed7aa; border-color: #f59e0b; color: #9a3412; }
+        .alert-danger  { background: #fecaca; border-color: #ef4444; color: #991b1b; }
 
-        .alert-warning {
-            background: #fed7aa;
-            border-color: #f59e0b;
-            color: #9a3412;
-        }
-
-        .alert-danger {
-            background: #fecaca;
-            border-color: #ef4444;
-            color: #991b1b;
-        }
-
-        .alert-icon {
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
+        .alert-icon { font-size: 1.5rem; flex-shrink: 0; }
 
         /* Toast */
         .toast {
@@ -482,12 +451,10 @@
 
         @keyframes slideInRight {
             from { transform: translateX(400px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+            to   { transform: translateX(0); opacity: 1; }
         }
 
-        @keyframes fadeOut {
-            to { opacity: 0; transform: translateY(-20px); }
-        }
+        @keyframes fadeOut { to { opacity: 0; transform: translateY(-20px); } }
 
         /* Empty State */
         .empty-state {
@@ -503,11 +470,7 @@
         }
 
         /* Search Box */
-        .search-box {
-            position: relative;
-            margin-bottom: 1.5rem;
-        }
-
+        .search-box { position: relative; margin-bottom: 1.5rem; }
         .search-box i {
             position: absolute;
             left: 1rem;
@@ -515,10 +478,7 @@
             transform: translateY(-50%);
             color: var(--text-muted);
         }
-
-        .search-box input {
-            padding-left: 3rem;
-        }
+        .search-box input { padding-left: 3rem; }
 
         /* Navigation */
         nav {
@@ -554,6 +514,7 @@
             border-radius: 9999px;
             color: white;
             font-weight: 600;
+            cursor: pointer;
         }
 
         /* Chart Container */
@@ -567,20 +528,20 @@
         }
 
         /* Step Content */
-        .step-content { 
+        .step-content {
             display: none;
             opacity: 0;
             transform: translateY(20px);
         }
-        
-        .step-content.active { 
+
+        .step-content.active {
             display: block;
             animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        
-        @keyframes fadeInUp { 
-            from { opacity: 0; transform: translateY(20px); } 
-            to { opacity: 1; transform: translateY(0); } 
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
         /* Footer Navigation */
@@ -603,13 +564,8 @@
             gap: 1rem;
         }
 
-        .footer-container .btn {
-            flex: 1;
-        }
-
-        .footer-container .btn-primary {
-            flex: 2;
-        }
+        .footer-container .btn { flex: 1; }
+        .footer-container .btn-primary { flex: 2; }
 
         .hidden { display: none !important; }
         .relative { position: relative; }
@@ -652,13 +608,9 @@
             background: transparent;
         }
 
-        .btn-icon:hover {
-            color: var(--error);
-        }
+        .btn-icon:hover { color: var(--error); }
 
-        .ordem-card {
-            border-left: 4px solid var(--primary);
-        }
+        .ordem-card { border-left: 4px solid var(--primary); }
 
         .dose-box {
             background: #f0fdfa;
@@ -683,10 +635,7 @@
             font-family: 'Space Mono', monospace;
         }
 
-        .w-20 {
-            width: 5rem;
-            height: 5rem;
-        }
+        .w-20 { width: 5rem; height: 5rem; }
 
         .checkbox-container {
             display: flex;
@@ -699,9 +648,7 @@
             transition: all 0.3s ease;
         }
 
-        .checkbox-container:hover {
-            background: #ccfbf1;
-        }
+        .checkbox-container:hover { background: #ccfbf1; }
 
         .checkbox-container input[type="checkbox"] {
             width: 1.25rem;
@@ -714,10 +661,7 @@
             .stat-value { font-size: 2rem; }
             .card { padding: 1.5rem; }
             .grid-2, .grid-3 { grid-template-columns: 1fr; }
-            .menu-card { 
-                flex-direction: row;
-                text-align: left; 
-            }
+            .menu-card { flex-direction: row; text-align: left; }
             .icon-arrow { display: none; }
             .toast { right: 1rem; left: 1rem; }
         }
@@ -731,14 +675,16 @@
             <h1 class="logo text-white" onclick="navTo('menu')">
                 CALDA<span class="logo-accent">CERTA</span>
             </h1>
-            <div id="user-display" class="user-badge mono">
-                Modo Local
-            </div>
+
+            <!-- ✅ AGORA É UM BOTÃO DE TOGGLE -->
+            <button id="user-display" class="user-badge mono btn" type="button" onclick="toggleApiMode()" style="border:none;">
+                Detectando...
+            </button>
         </div>
     </nav>
 
     <main class="container">
-        
+
         <!-- MENU PRINCIPAL -->
         <section id="step-menu" class="step-content active">
             <div class="py-16 text-center">
@@ -748,7 +694,7 @@
                 <h2 class="text-4xl font-black text-slate-900 mb-2">Gestão de Caldas</h2>
                 <p class="text-lg text-slate-600 font-semibold">Simulação e Histórico Digital Profissional</p>
             </div>
-            
+
             <div class="grid gap-6">
                 <button onclick="startNewSimulation()" class="btn card menu-card relative z-10">
                     <div class="icon-box">
@@ -785,10 +731,10 @@
 
             <div class="search-box">
                 <i class="fa-solid fa-search"></i>
-                <input 
-                    type="text" 
-                    id="search-history" 
-                    placeholder="Pesquisar por cliente, propriedade ou cultura..." 
+                <input
+                    type="text"
+                    id="search-history"
+                    placeholder="Pesquisar por cliente, propriedade ou cultura..."
                     class="input-box"
                     oninput="filterHistory()"
                 >
@@ -1002,7 +948,7 @@
             <div class="card">
                 <div class="mb-4 flex items-center justify-between">
                     <h3 class="text-sm font-bold text-slate-700 uppercase">Adicionar Produto</h3>
-                    <button onclick="toggleNovoOuBanco()" class="text-xs font-bold text-teal-600 hover:text-teal-800 transition-colors">
+                    <button onclick="toggleNovoOuBanco()" class="text-xs font-bold text-teal-600 hover:text-teal-800 transition-colors" style="background:transparent;border:none;cursor:pointer;">
                         <i class="fa-solid fa-exchange-alt mr-1"></i>
                         <span id="toggle-text">Produto Novo</span>
                     </button>
@@ -1111,7 +1057,7 @@
                         Respeitar hierarquia de mistura
                     </label>
                 </div>
-                
+
                 <div id="hierarchyOptions" class="mt-4">
                     <label class="label-text">Critério de Ordenação dos Produtos (2ª Ordem)</label>
                     <select id="criterioOrdenacao" class="input-box" style="margin-bottom: 0;" onchange="renderOrdem()">
@@ -1175,7 +1121,7 @@
     <script>
         // VERSÃO COM API - BACKEND NODE.JS + SQLITE
         // A configuração da API está em api-config.js
-        
+
         let products = [];
         let historicalData = [];
         let currentStepIdx = 0;
@@ -1190,37 +1136,68 @@
         let bancoResponsaveis = [];
         let bancoOperadores = [];
 
+        // ✅ MODO API: leitura / badge / toggle
+        function getModoAtual() {
+            const forced = (localStorage.getItem("MODO_API") || "").toLowerCase();
+            if (forced === "local") return "local";
+            if (forced === "remoto") return "remoto";
+
+            const base = (window.API_BASE || "");
+            return base.includes("localhost") ? "local" : "remoto";
+        }
+
+        function atualizarBadgeModo() {
+            const btn = document.getElementById("user-display");
+            if (!btn) return;
+
+            const modo = getModoAtual();
+            const host = location.hostname;
+            const base = window.API_BASE || "(não definido)";
+
+            if (modo === "local") {
+                btn.textContent = "Modo Local";
+                btn.title = `Usando API local (${base}) | host=${host}`;
+            } else {
+                btn.textContent = "Modo Remoto";
+                btn.title = `Usando API remoto (${base}) | host=${host}`;
+            }
+        }
+
+        window.toggleApiMode = () => {
+            const modo = getModoAtual();
+            localStorage.setItem("MODO_API", modo === "local" ? "remoto" : "local");
+            location.reload();
+        };
+
         // Inicializar bancos de dados da API
         async function initBancosDados() {
             try {
-                // Mostrar indicador de carregamento
                 console.log('📡 Carregando dados da API...');
-                
-                // Carregar produtos do servidor
+                if (!window.API || typeof API.getProdutos !== "function") {
+                    throw new Error("Objeto API não encontrado. Verifique o api-config.js");
+                }
+
                 bancoProdutos = await API.getProdutos();
                 console.log(`✅ ${bancoProdutos.length} produtos carregados`);
-                
-                // Carregar dados de identificação
+
                 const clientes = await API.getClientes();
                 const responsaveis = await API.getResponsaveis();
                 const operadores = await API.getOperadores();
-                
+
                 bancoClientes = clientes.map(c => c.nome);
                 bancoResponsaveis = responsaveis.map(r => r.nome);
                 bancoOperadores = operadores.map(o => o.nome);
-                
+
                 console.log(`✅ ${bancoClientes.length} clientes, ${bancoResponsaveis.length} responsáveis, ${bancoOperadores.length} operadores`);
-                
-                // Preencher datalists
+
                 preencherDatalist('clientes-list', bancoClientes);
                 preencherDatalist('propriedades-list', bancoPropriedades);
                 preencherDatalist('talhoes-list', bancoTalhoes);
                 preencherDatalist('responsaveis-list', bancoResponsaveis);
                 preencherDatalist('operadores-list', bancoOperadores);
 
-                // Preencher select de produtos
                 preencherSelectProdutos();
-                
+
                 console.log('✅ Bancos de dados carregados com sucesso!');
             } catch (error) {
                 console.error('❌ Erro ao carregar dados da API:', error);
@@ -1246,25 +1223,16 @@
             const bancDiv = document.getElementById('produto-banco');
             const toggleText = document.getElementById('toggle-text');
             const camposReadonly = ['p_nome', 'p_marca', 'p_formulacao', 'p_tipo'];
-            
+
             if (usandoBanco) {
-                // Modo Banco: mostra select, bloqueia campos de produto
                 bancDiv.style.display = 'block';
                 toggleText.innerText = 'Produto Novo';
-                
-                // Limpar seleção
                 document.getElementById('p_banco').selectedIndex = 0;
                 limparCamposProduto();
             } else {
-                // Modo Manual: esconde select, libera todos campos
                 bancDiv.style.display = 'none';
                 toggleText.innerText = 'Buscar no Banco';
-                
-                // Habilitar todos os campos
-                camposReadonly.forEach(id => {
-                    document.getElementById(id).disabled = false;
-                });
-                
+                camposReadonly.forEach(id => { document.getElementById(id).disabled = false; });
                 limparCamposProduto();
                 document.getElementById('p_nome').focus();
             }
@@ -1279,33 +1247,25 @@
             document.getElementById('p_tipo').selectedIndex = 0;
         }
 
-        // Preencher do banco
         window.preencherDoBanco = () => {
             const selectIdx = document.getElementById('p_banco').value;
             if (selectIdx === '') {
                 limparCamposProduto();
                 return;
             }
-            
+
             const produto = bancoProdutos[parseInt(selectIdx)];
-            
-            // Preencher campos
+
             document.getElementById('p_nome').value = produto.nome;
             document.getElementById('p_marca').value = produto.marca;
             document.getElementById('p_formulacao').value = produto.formulacao;
             document.getElementById('p_tipo').value = produto.tipo;
             document.getElementById('p_ph').value = produto.ph || '';
-            
-            // Limpar dose para usuário preencher
+
             document.getElementById('p_dose').value = '';
-            
-            // Focar no campo dose
-            setTimeout(() => {
-                document.getElementById('p_dose').focus();
-            }, 100);
+            setTimeout(() => { document.getElementById('p_dose').focus(); }, 100);
         };
 
-        // Carregar histórico do servidor
         async function loadHistory() {
             try {
                 historicalData = await API.getSimulacoes();
@@ -1317,18 +1277,10 @@
             }
         }
 
-        // Função para organizar produtos por hierarquia
         function sortProductsByHierarchy(products, criterio = 'tipo') {
             const hierarchy = {
-                'ADJUVANTE': 1,
-                'ESPALHANTE': 1,
-                'ANTIESPUMA': 1,
-                'PRODUTO': 2,
-                'SC': 2,
-                'CE': 2,
-                'WG': 2,
-                'EW': 2,
-                'OD': 2,
+                'ADJUVANTE': 1, 'ESPALHANTE': 1, 'ANTIESPUMA': 1,
+                'PRODUTO': 2, 'SC': 2, 'CE': 2, 'WG': 2, 'EW': 2, 'OD': 2,
                 'FERTILIZANTE': 3,
                 'OLEO': 4
             };
@@ -1336,48 +1288,34 @@
             return [...products].sort((a, b) => {
                 const prioA = hierarchy[a.tipo] || hierarchy[a.formulacao] || 2;
                 const prioB = hierarchy[b.tipo] || hierarchy[b.formulacao] || 2;
-                
-                // Se têm prioridades diferentes, ordena por prioridade
-                if (prioA !== prioB) {
-                    return prioA - prioB;
-                }
-                
-                // Se ambos são produtos (prioridade 2), aplica o critério de ordenação
+
+                if (prioA !== prioB) return prioA - prioB;
+
                 if (prioA === 2 && prioB === 2) {
                     if (criterio === 'ph-crescente') {
-                        // pH crescente (menor para maior)
-                        const phA = a.ph || 7; // default 7 se não informado
+                        const phA = a.ph || 7;
                         const phB = b.ph || 7;
                         return phA - phB;
                     } else if (criterio === 'ph-decrescente') {
-                        // pH decrescente (maior para menor)
                         const phA = a.ph || 7;
                         const phB = b.ph || 7;
                         return phB - phA;
                     } else {
-                        // Por tipo de solução (formulação)
                         return a.formulacao.localeCompare(b.formulacao);
                     }
                 }
-                
-                // Mantém ordem original dentro da mesma prioridade
+
                 return 0;
             });
         }
-        
-        // Função para mostrar/ocultar opções de hierarquia
+
         window.toggleHierarchyOptions = () => {
             const checked = document.getElementById('respeitarHierarquia').checked;
             const options = document.getElementById('hierarchyOptions');
-            if (checked) {
-                options.style.display = 'block';
-            } else {
-                options.style.display = 'none';
-            }
+            options.style.display = checked ? 'block' : 'none';
             renderOrdem();
         };
 
-        // Salvar simulação na API
         window.saveSimulation = async () => {
             if (!document.getElementById('id_cliente').value) {
                 showToast('❌ Preencha o nome do cliente', 'error');
@@ -1417,13 +1355,13 @@
             };
 
             try {
-                const result = await API.saveSimulacao(payload);
+                await API.saveSimulacao(payload);
                 showToast('✅ Simulação salva no servidor!', 'success');
                 btn.innerHTML = '<i class="fa-solid fa-check"></i> Salvo no Servidor';
                 btn.classList.add('opacity-50');
-                
+
                 await loadHistory();
-                await initBancosDados(); // Recarregar autocompletes
+                await initBancosDados();
             } catch (e) {
                 console.error('Erro ao salvar:', e);
                 showToast('❌ Erro ao salvar no servidor', 'error');
@@ -1435,18 +1373,18 @@
         function renderHistoryList(data) {
             const list = document.getElementById('history-list');
             const empty = document.getElementById('history-empty');
-            
+
             if (data.length === 0) {
                 list.innerHTML = '';
                 empty.classList.remove('hidden');
                 return;
             }
-            
+
             empty.classList.add('hidden');
             list.innerHTML = data.map(item => {
                 const date = item.data_aplicacao ? new Date(item.data_aplicacao).toLocaleDateString('pt-BR') : 'Data não informada';
                 const prodCount = item.produtos_nomes ? item.produtos_nomes.split('|').length : 0;
-                
+
                 return `
                     <div class="card card-medium history-card" onclick="viewSimulation(${item.id})">
                         <div class="flex justify-between items-start mb-3">
@@ -1482,7 +1420,7 @@
             try {
                 const item = await API.getSimulacao(id);
                 if (!item) return;
-                
+
                 document.getElementById('id_cliente').value = item.cliente;
                 document.getElementById('id_propriedade').value = item.propriedade;
                 document.getElementById('id_talhao').value = item.talhao || '';
@@ -1495,16 +1433,16 @@
                 document.getElementById('eq_vazao').value = item.vazao;
                 document.getElementById('eq_operador').value = item.operador || '';
                 document.getElementById('jarra_vol').value = item.jarra_volume || 1000;
-                document.getElementById('respeitarHierarquia').checked = item.respeitar_hierarquia;
+                document.getElementById('respeitarHierarquia').checked = !!item.respeitar_hierarquia;
                 document.getElementById('criterioOrdenacao').value = item.criterio_ordenacao || 'tipo';
-                
+
                 document.getElementById('agua_ph').value = item.agua_ph || '';
                 document.getElementById('agua_dureza').value = item.agua_dureza || '';
                 document.getElementById('agua_origem').value = item.agua_origem || 'Poço';
                 document.getElementById('agua_obs').value = item.agua_observacoes || '';
-                
-                products = item.produtos.map(p => ({
-                    id: p.id || Date.now() + Math.random(),
+
+                products = (item.produtos || []).map(p => ({
+                    id: p.id || (Date.now() + Math.random()),
                     nome: p.produto_nome,
                     marca: p.produto_marca,
                     dose: p.dose,
@@ -1512,7 +1450,7 @@
                     tipo: p.tipo,
                     ph: p.ph
                 }));
-                
+
                 renderProductList();
                 calcRendimento();
                 toggleHierarchyOptions();
@@ -1526,7 +1464,7 @@
         // Navegação
         window.navTo = (id) => {
             currentStepIdx = steps.indexOf(id.replace('step-',''));
-            
+
             document.querySelectorAll('.step-content').forEach(s => s.classList.remove('active'));
             const target = id === 'history' ? 'step-history' : `step-${steps[currentStepIdx]}`;
             document.getElementById(target).classList.add('active');
@@ -1534,10 +1472,10 @@
             const footer = document.getElementById('app-nav');
             const isMenu = id === 'menu' || id === 'history';
             const isLast = steps[currentStepIdx] === '2-6';
-            
+
             footer.classList.toggle('hidden', isMenu || isLast);
             document.getElementById('btn-prev').classList.toggle('hidden', currentStepIdx <= 1);
-            
+
             if (steps[currentStepIdx] === '2-4') {
                 initCharts();
                 checkClimateConditions();
@@ -1549,7 +1487,7 @@
                 btnSave.classList.remove('opacity-50');
                 renderOrdem();
             }
-            
+
             window.scrollTo({top: 0, behavior: 'smooth'});
         };
 
@@ -1561,7 +1499,7 @@
                     return;
                 }
             }
-            
+
             if (currentStepIdx === 2) {
                 const tanque = document.getElementById('eq_tanque').value;
                 const vazao = document.getElementById('eq_vazao').value;
@@ -1570,14 +1508,14 @@
                     return;
                 }
             }
-            
+
             if (currentStepIdx === 5) {
                 if (products.length === 0) {
                     showToast('❌ Adicione pelo menos um produto', 'error');
                     return;
                 }
             }
-            
+
             if (currentStepIdx < steps.length - 1) navTo(steps[currentStepIdx + 1]);
         };
 
@@ -1608,12 +1546,12 @@
             const marca = document.getElementById('p_marca').value;
             const tipo = document.getElementById('p_tipo').value;
             const ph = parseFloat(document.getElementById('p_ph').value) || null;
-            
+
             if (!nome || !dose) {
                 showToast('❌ Preencha nome e dose do produto', 'error');
                 return;
             }
-            
+
             const p = {
                 id: Date.now(),
                 nome: nome,
@@ -1623,27 +1561,20 @@
                 tipo: tipo,
                 ph: ph
             };
-            
+
             products.push(p);
             renderProductList();
-            
-            // Se é produto novo (não do banco), adicionar ao banco via API
+
             if (!usandoBanco && !bancoProdutos.find(bp => bp.nome === nome && bp.marca === marca)) {
                 try {
-                    await API.saveProduto({
-                        nome: nome,
-                        marca: marca,
-                        formulacao: formulacao,
-                        tipo: tipo,
-                        ph: ph
-                    });
-                    await initBancosDados(); // Recarregar produtos
+                    await API.saveProduto({ nome, marca, formulacao, tipo, ph });
+                    await initBancosDados();
                     showToast('💾 Produto adicionado ao banco de dados', 'success');
                 } catch (e) {
                     console.error('Erro ao salvar produto:', e);
                 }
             }
-            
+
             document.getElementById('p_nome').value = "";
             document.getElementById('p_marca').value = "";
             document.getElementById('p_dose').value = "";
@@ -1651,20 +1582,20 @@
             document.getElementById('p_formulacao').selectedIndex = 0;
             document.getElementById('p_tipo').selectedIndex = 0;
             document.getElementById('p_banco').selectedIndex = 0;
-            
+
             showToast('✅ Produto adicionado à lista', 'success');
         };
 
         function renderProductList() {
             const lista = document.getElementById('lista-produtos');
             const empty = document.getElementById('produtos-empty');
-            
+
             if (products.length === 0) {
                 lista.innerHTML = '';
                 empty.classList.remove('hidden');
                 return;
             }
-            
+
             empty.classList.add('hidden');
             lista.innerHTML = products.map((p, idx) => `
                 <div class="product-item">
@@ -1707,20 +1638,20 @@
             const container = document.getElementById('ordem-container');
             const respeitar = document.getElementById('respeitarHierarquia').checked;
             const criterio = document.getElementById('criterioOrdenacao').value;
-            
+
             if (products.length === 0) {
                 container.innerHTML = '<div class="empty-state"><p class="text-slate-500">Nenhum produto adicionado</p></div>';
                 return;
             }
-            
+
             let displayProducts = respeitar ? sortProductsByHierarchy(products, criterio) : products;
-            
+
             container.innerHTML = displayProducts.map((p, i) => {
                 const doseJarra = ((p.dose * jarra) / vazao).toFixed(2);
                 const doseTanque = ((p.dose * tanque) / vazao).toFixed(2);
                 const volumeTotal = (p.dose * area).toFixed(2);
                 const phDisplay = p.ph ? `pH: ${p.ph}` : '';
-                
+
                 return `
                     <div class="product-item ordem-card" data-id="${p.id}">
                         <i class="fa-solid fa-grip-vertical drag-handle"></i>
@@ -1752,12 +1683,9 @@
                     </div>
                 `;
             }).join('');
-            
-            // Inicializar Sortable.js para drag and drop
-            if (sortableInstance) {
-                sortableInstance.destroy();
-            }
-            
+
+            if (sortableInstance) sortableInstance.destroy();
+
             if (!respeitar) {
                 sortableInstance = new Sortable(container, {
                     animation: 150,
@@ -1765,29 +1693,25 @@
                     ghostClass: 'sortable-ghost',
                     dragClass: 'sortable-drag',
                     onEnd: function(evt) {
-                        const itemEl = evt.item;
                         const newIndex = evt.newIndex;
                         const oldIndex = evt.oldIndex;
-                        
-                        // Reordenar array de produtos
                         const movedItem = products.splice(oldIndex, 1)[0];
                         products.splice(newIndex, 0, movedItem);
-                        
                         showToast('📦 Ordem atualizada', 'success');
                     }
                 });
             }
         };
 
-        // Verificação de condições climáticas
+        // Clima
         function checkClimateConditions() {
             const alertContainer = document.getElementById('alert-container');
             const deltaT = [2, 3, 5, 8, 12, 14, 15, 12, 8, 4, 2, 1];
             const maxDelta = Math.max(...deltaT);
             const minDelta = Math.min(...deltaT);
-            
+
             let alertHTML = '';
-            
+
             if (maxDelta > 10) {
                 alertHTML += `
                     <div class="alert alert-danger">
@@ -1829,107 +1753,98 @@
                     </div>
                 `;
             }
-            
+
             alertContainer.innerHTML = alertHTML;
         }
 
-        // PDF MELHORADO
+        // PDF (mantido como estava no seu código)
         window.generatePDF = () => {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
-            
-            // PÁGINA 1 - CABEÇALHO E ORDEM DE MISTURA (PAISAGEM)
-            
-            // Cabeçalho
+
             doc.setFillColor(15, 118, 110);
             doc.rect(0, 0, 297, 35, 'F');
-            
+
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(22);
             doc.setFont(undefined, 'bold');
             doc.text('CALDACERTA - PLANO DE APLICAÇÃO', 148.5, 15, { align: 'center' });
-            
+
             doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
             doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 148.5, 23, { align: 'center' });
-            
-            // Dados de Identificação
+
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(9);
             doc.setFont(undefined, 'bold');
-            
+
             let y = 45;
             const col1 = 15;
             const col2 = 105;
             const col3 = 195;
-            
-            // Coluna 1
+
             doc.text('CLIENTE:', col1, y);
             doc.setFont(undefined, 'normal');
             doc.text(document.getElementById('id_cliente').value, col1 + 20, y);
-            
+
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('PROPRIEDADE:', col1, y);
             doc.setFont(undefined, 'normal');
             doc.text(document.getElementById('id_propriedade').value, col1 + 30, y);
-            
+
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('TALHÃO:', col1, y);
             doc.setFont(undefined, 'normal');
             doc.text(document.getElementById('id_talhao').value, col1 + 20, y);
-            
-            // Coluna 2
+
             y = 45;
             doc.setFont(undefined, 'bold');
             doc.text('DATA APLICAÇÃO:', col2, y);
             doc.setFont(undefined, 'normal');
             const dataAplicacao = new Date(document.getElementById('id_data').value).toLocaleDateString('pt-BR');
             doc.text(dataAplicacao, col2 + 35, y);
-            
+
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('CULTURA:', col2, y);
             doc.setFont(undefined, 'normal');
             doc.text(document.getElementById('id_cultura').value, col2 + 20, y);
-            
+
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('ÁREA:', col2, y);
             doc.setFont(undefined, 'normal');
             doc.text(`${document.getElementById('id_area').value} ha`, col2 + 15, y);
-            
-            // Coluna 3
+
             y = 45;
             doc.setFont(undefined, 'bold');
             doc.text('RESP. TÉCNICO:', col3, y);
             doc.setFont(undefined, 'normal');
             doc.text(document.getElementById('id_responsavel').value, col3 + 35, y);
-            
+
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('OPERADOR:', col3, y);
             doc.setFont(undefined, 'normal');
             doc.text(document.getElementById('eq_operador').value, col3 + 25, y);
-            
+
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('OBJETIVO:', col3, y);
             doc.setFont(undefined, 'normal');
             doc.text(document.getElementById('id_objetivo').value, col3 + 23, y);
-            
-            // Dados da Máquina
+
             y += 12;
             doc.setFontSize(11);
             doc.setFont(undefined, 'bold');
             doc.text('DADOS DA MÁQUINA', col1, y);
-            
+
             y += 7;
             doc.setFontSize(9);
             doc.text(`Capacidade: ${document.getElementById('eq_tanque').value} L  |  Vazão: ${document.getElementById('eq_vazao').value} L/ha  |  Rendimento: ${document.getElementById('res_rendimento').innerText} ha/tanque`, col1, y);
-            
-            // Tabela de Ordem de Mistura
+
             y += 10;
             const jarra = parseFloat(document.getElementById('jarra_vol').value);
             const vazao = parseFloat(document.getElementById('eq_vazao').value) || 100;
@@ -1937,9 +1852,9 @@
             const area = parseFloat(document.getElementById('id_area').value) || 10;
             const respeitar = document.getElementById('respeitarHierarquia').checked;
             const criterio = document.getElementById('criterioOrdenacao').value;
-            
+
             let displayProducts = respeitar ? sortProductsByHierarchy(products, criterio) : products;
-            
+
             const tableData = displayProducts.map((p, i) => [
                 `${i + 1}`,
                 p.nome,
@@ -1950,23 +1865,20 @@
                 `${(p.dose * area).toFixed(1)}`,
                 `${((p.dose * tanque) / vazao).toFixed(1)}`
             ]);
-            
+
             doc.autoTable({
                 startY: y,
                 head: [['#', 'Produto', 'Marca', 'pH', 'Dose/ha', `Jarra\n(${jarra}ml)`, `TOTAL\n(${area}ha)`, 'DOSE\nTANQUE']],
                 body: tableData,
                 theme: 'grid',
-                headStyles: { 
+                headStyles: {
                     fillColor: [15, 118, 110],
                     fontSize: 8,
                     fontStyle: 'bold',
                     halign: 'center',
                     valign: 'middle'
                 },
-                bodyStyles: {
-                    fontSize: 7,
-                    valign: 'middle'
-                },
+                bodyStyles: { fontSize: 7, valign: 'middle' },
                 columnStyles: {
                     0: { cellWidth: 10, halign: 'center' },
                     1: { cellWidth: 65 },
@@ -1974,18 +1886,18 @@
                     3: { cellWidth: 18, halign: 'center' },
                     4: { cellWidth: 22, halign: 'center' },
                     5: { cellWidth: 22, halign: 'center' },
-                    6: { 
-                        cellWidth: 28, 
+                    6: {
+                        cellWidth: 28,
                         halign: 'center',
-                        fillColor: [255, 237, 213], // Laranja claro
+                        fillColor: [255, 237, 213],
                         textColor: [0, 0, 0],
                         fontStyle: 'bold',
                         fontSize: 9
                     },
-                    7: { 
-                        cellWidth: 30, 
+                    7: {
+                        cellWidth: 30,
                         halign: 'center',
-                        fillColor: [254, 243, 199], // Amarelo claro
+                        fillColor: [254, 243, 199],
                         textColor: [0, 0, 0],
                         fontStyle: 'bold',
                         fontSize: 9
@@ -1993,70 +1905,61 @@
                 },
                 margin: { left: 15, right: 15 },
                 didDrawCell: function(data) {
-                    // Adicionar borda extra nas colunas importantes
                     if (data.column.index === 6 || data.column.index === 7) {
-                        doc.setDrawColor(234, 88, 12); // Cor laranja para destaque
+                        doc.setDrawColor(234, 88, 12);
                         doc.setLineWidth(0.5);
                         doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height);
                     }
                 }
             });
-            
-            // PÁGINA 2 - QUALIDADE DA ÁGUA E GRÁFICOS (PAISAGEM)
+
             doc.addPage('landscape');
-            
-            // Cabeçalho Página 2
             doc.setFillColor(15, 118, 110);
             doc.rect(0, 0, 297, 25, 'F');
-            
+
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(18);
             doc.setFont(undefined, 'bold');
             doc.text('QUALIDADE DA ÁGUA E CONDIÇÕES CLIMÁTICAS', 148.5, 15, { align: 'center' });
-            
-            // Qualidade da Água
+
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(12);
             doc.setFont(undefined, 'bold');
             doc.text('1. QUALIDADE DA ÁGUA', 15, 35);
-            
+
             doc.setFontSize(9);
             doc.setFont(undefined, 'normal');
             y = 43;
-            
+
             const ph = document.getElementById('agua_ph').value || 'Não informado';
             const dureza = document.getElementById('agua_dureza').value || 'Não informado';
             const origem = document.getElementById('agua_origem').value;
             const obs = document.getElementById('agua_obs').value || 'Sem observações';
-            
+
             doc.text(`pH: ${ph}`, 15, y);
             doc.text(`Dureza: ${dureza} µS/cm`, 70, y);
             doc.text(`Origem: ${origem}`, 140, y);
             y += 6;
             doc.text(`Observações: ${obs}`, 15, y);
-            
-            // Gráficos lado a lado
+
             y += 15;
             doc.setFontSize(11);
             doc.setFont(undefined, 'bold');
-            
-            // Delta T à esquerda
+
             doc.text('2. GRÁFICO DELTA T', 15, y);
             const chartDeltaT = document.getElementById('chartDeltaT');
             if (chartDeltaT) {
                 const imgDeltaT = chartDeltaT.toDataURL('image/png');
                 doc.addImage(imgDeltaT, 'PNG', 15, y + 5, 130, 110);
             }
-            
-            // Condições Meteorológicas à direita
+
             doc.text('3. CONDIÇÕES METEOROLÓGICAS', 155, y);
             const chartClima = document.getElementById('chartClima');
             if (chartClima) {
                 const imgClima = chartClima.toDataURL('image/png');
                 doc.addImage(imgClima, 'PNG', 155, y + 5, 130, 110);
             }
-            
-            // Salvar
+
             doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('✅ PDF completo gerado com sucesso!', 'success');
         };
@@ -2066,9 +1969,9 @@
         function initCharts() {
             charts.forEach(c => c.destroy());
             charts = [];
-            
+
             const hours = Array.from({length: 12}, (_, i) => `${i+6}h`);
-            
+
             const chartDeltaT = new Chart(document.getElementById('chartDeltaT'), {
                 type: 'line',
                 data: {
@@ -2092,7 +1995,7 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { display: true, position: 'top' },
-                        tooltip: { 
+                        tooltip: {
                             backgroundColor: 'rgba(0,0,0,0.8)',
                             padding: 12,
                             titleFont: { size: 14, weight: 'bold' },
@@ -2105,13 +2008,11 @@
                             grid: { color: '#f5f5f4' },
                             title: { display: true, text: 'Delta T (°C)' }
                         },
-                        x: {
-                            grid: { display: false }
-                        }
+                        x: { grid: { display: false } }
                     }
                 }
             });
-            
+
             const chartClima = new Chart(document.getElementById('chartClima'), {
                 type: 'line',
                 data: {
@@ -2153,7 +2054,7 @@
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: true, position: 'top' },
-                        tooltip: { 
+                        tooltip: {
                             backgroundColor: 'rgba(0,0,0,0.8)',
                             padding: 12,
                             titleFont: { size: 14, weight: 'bold' },
@@ -2175,37 +2076,38 @@
                             title: { display: true, text: 'Umidade (%)' },
                             grid: { drawOnChartArea: false }
                         },
-                        x: {
-                            grid: { display: false }
-                        }
+                        x: { grid: { display: false } }
                     }
                 }
             });
-            
+
             charts.push(chartDeltaT, chartClima);
         }
 
-        // Toast notifications
+        // Toast
         function showToast(message, type = 'success') {
             const existing = document.querySelector('.toast');
             if (existing) existing.remove();
-            
+
             const toast = document.createElement('div');
             toast.className = 'toast';
             toast.style.background = type === 'error' ? '#dc2626' : '#15803d';
             toast.innerHTML = message;
             document.body.appendChild(toast);
-            
+
             setTimeout(() => toast.remove(), 3000);
         }
 
         // Inicialização
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('id_data').value = new Date().toISOString().split('T')[0];
+
+            // ✅ Mostra o modo real (local/remoto) e permite trocar
+            atualizarBadgeModo();
+
             initBancosDados();
             loadHistory();
-            
-            // Inicializar com banco visível e formulário visível
+
             document.getElementById('produto-banco').style.display = 'block';
             document.getElementById('produto-form').style.display = 'block';
         });

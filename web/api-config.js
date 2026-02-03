@@ -1,19 +1,40 @@
 // web/api-config.js
+// Caminho A (Render): usar API RELATIVA do mesmo host => /api/...
 
-// Domínio do seu backend no Render
-const REMOTE_API = "https://caldacerta.onrender.com";
-const LOCAL_API  = "http://localhost:3000";
+window.API_BASE = ""; // no Render e em produção: /api/...
 
-// Detecta onde está rodando
-const IS_RENDER = location.hostname.endsWith("onrender.com");
-const IS_LOCALHOST =
-  location.hostname === "localhost" ||
-  location.hostname === "127.0.0.1" ||
-  location.protocol === "file:";
+// Helper de fetch com erro amigável
+async function apiFetch(path, options = {}) {
+  const url = `${window.API_BASE}${path}`;
+  const resp = await fetch(url, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
 
-// ⚠️ REGRA DEFINITIVA:
-// - Se estiver no Render -> SEMPRE remoto
-// - Se estiver no seu PC -> pode usar local
-window.API_BASE = IS_RENDER ? REMOTE_API : (IS_LOCALHOST ? LOCAL_API : REMOTE_API);
+  if (!resp.ok) {
+    let txt = "";
+    try { txt = await resp.text(); } catch {}
+    throw new Error(`HTTP ${resp.status} em ${url} :: ${txt.slice(0, 300)}`);
+  }
 
-console.log("API_BASE =", window.API_BASE, "HOST =", location.hostname);
+  // Pode ser JSON ou vazio
+  const ct = resp.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return resp.json();
+  return resp.text();
+}
+
+// API usada pelo seu index.html
+window.API = {
+  getProdutos: () => apiFetch("/api/produtos"),
+  saveProduto: (data) => apiFetch("/api/produtos", { method: "POST", body: JSON.stringify(data) }),
+
+  getClientes: () => apiFetch("/api/clientes"),
+  getResponsaveis: () => apiFetch("/api/responsaveis"),
+  getOperadores: () => apiFetch("/api/operadores"),
+
+  getSimulacoes: () => apiFetch("/api/simulacoes"),
+  getSimulacao: (id) => apiFetch(`/api/simulacoes/${id}`),
+  saveSimulacao: (data) => apiFetch("/api/simulacoes", { method: "POST", body: JSON.stringify(data) }),
+};
+
+console.log("✅ API_BASE =", window.API_BASE, "| host =", location.host);
