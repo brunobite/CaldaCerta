@@ -1,30 +1,39 @@
 // web/api-config.js
-// PRODUÇÃO (Render): API no mesmo domínio
-const API_URL = "/api";
+// PRODUÇÃO (Render): mesma origem -> /api
 
-// Objeto API
-const API = {
-  getProdutos: () => fetch(`${API_URL}/produtos`).then(r => r.json()),
-  getClientes: () => fetch(`${API_URL}/clientes`).then(r => r.json()),
-  getResponsaveis: () => fetch(`${API_URL}/responsaveis`).then(r => r.json()),
-  getOperadores: () => fetch(`${API_URL}/operadores`).then(r => r.json()),
+window.API_BASE = ""; // => /api/...
 
-  getSimulacoes: () => fetch(`${API_URL}/simulacoes`).then(r => r.json()),
-  getSimulacao: (id) => fetch(`${API_URL}/simulacoes/${id}`).then(r => r.json()),
+async function apiFetch(path, options = {}) {
+  const url = `${window.API_BASE}${path}`;
+  const resp = await fetch(url, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
 
+  if (!resp.ok) {
+    let txt = "";
+    try { txt = await resp.text(); } catch {}
+    throw new Error(`HTTP ${resp.status} em ${url} :: ${txt.slice(0, 300)}`);
+  }
+
+  const ct = resp.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return resp.json();
+  return resp.text();
+}
+
+window.API = {
+  getProdutos: () => apiFetch("/api/produtos"),
   saveProduto: (data) =>
-    fetch(`${API_URL}/produtos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    }),
+    apiFetch("/api/produtos", { method: "POST", body: JSON.stringify(data) }),
 
+  getClientes: () => apiFetch("/api/clientes"),
+  getResponsaveis: () => apiFetch("/api/responsaveis"),
+  getOperadores: () => apiFetch("/api/operadores"),
+
+  getSimulacoes: () => apiFetch("/api/simulacoes"),
+  getSimulacao: (id) => apiFetch(`/api/simulacoes/${id}`),
   saveSimulacao: (data) =>
-    fetch(`${API_URL}/simulacoes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    }),
+    apiFetch("/api/simulacoes", { method: "POST", body: JSON.stringify(data) }),
 };
 
-console.log("API_URL =", API_URL);
+console.log("✅ API_BASE =", window.API_BASE, "| host =", location.host);

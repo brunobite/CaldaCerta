@@ -1,37 +1,32 @@
-// web/api-config.js
+import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// APIs
-const LOCAL_API = "http://localhost:3000";
-// Em produção (Render), o melhor é usar URL RELATIVA (mesmo host)
-const REMOTE_API = ""; // => /api/...
+const app = express();
+app.use(express.json());
 
-// Detecta ambiente
-const IS_LOCALHOST =
-  location.hostname === "localhost" ||
-  location.hostname === "127.0.0.1" ||
-  location.protocol === "file:";
+// ====== ROTAS DA API (mantém suas rotas reais aqui) ======
+// Exemplo (não apague suas rotas reais, só mantenha o padrão /api)
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true });
+});
 
-const IS_RENDER = location.hostname.endsWith("onrender.com");
+// ====== FRONTEND ======
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Override opcional (para o seu botão "Modo Local" / "Modo Remoto")
-//
-// Valores aceitos em localStorage:
-// localStorage.setItem("MODO_API", "local")  -> força LOCAL_API
-// localStorage.setItem("MODO_API", "remoto") -> força REMOTE_API
-// localStorage.removeItem("MODO_API")        -> volta automático
-const forced = (localStorage.getItem("MODO_API") || "").toLowerCase();
-const forceLocal = forced === "local";
-const forceRemote = forced === "remoto";
+// IMPORTANTE:
+// server.js está em /server
+// frontend está em /web
+const WEB_DIR = path.join(__dirname, "../web");
 
-// Regra:
-// - Se estiver em localhost/file:// => local
-// - Se estiver no Render => remoto (relativo)
-// - Se estiver em outro lugar => remoto (relativo)
-// - Mas se o usuário forçar via localStorage, respeita
-window.API_BASE = forceLocal
-  ? LOCAL_API
-  : forceRemote
-    ? REMOTE_API
-    : (IS_LOCALHOST ? LOCAL_API : REMOTE_API);
+// serve arquivos estáticos (index.html, api-config.js, css, etc)
+app.use(express.static(WEB_DIR));
 
-console.log("✅ API_BASE =", window.API_BASE, "| HOST =", location.hostname, "| forced =", forced);
+// fallback: qualquer rota que não seja /api vai para index.html
+app.get("*", (req, res) => {
+  res.sendFile(path.join(WEB_DIR, "index.html"));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("✅ Server on port", PORT));
