@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "nome": "Glifosato 480",
+    "marca": "Roundup",
+    "formulacao": "SC",
+    "tipo": "PRODUTO",
+    "ph": 5.5
+  },
+  {
+    "id": 2,
+    "nome": "Óleo Mineral",
+    "marca": "Nimbus",
+    "formulacao": "ADJUVANTE",
+    "tipo": "OLEO",
+    "ph": 7
+  },
+  {
+    "id": 3,
+    "nome": "Spreader",
+    "marca": "Aureo",
+    "formulacao": "ESPALHANTE",
+    "tipo": "ADJUVANTE",
+    "ph": 6.8
+  }
+]
