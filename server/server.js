@@ -1,29 +1,29 @@
-import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
+const express = require("express");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
 
-// ====== ROTAS DA API (mantém suas rotas reais aqui) ======
-// Exemplo (não apague suas rotas reais, só mantenha o padrão /api)
-app.get("/api/health", (req, res) => {
+// ✅ Como o Render roda "cd server", o front está em "../web"
+const WEB_DIR = path.join(__dirname, "..", "web");
+
+// 1) Servir arquivos do FRONT
+app.use(express.static(WEB_DIR));
+
+// 2) Suas rotas /api (exemplos)
+app.get("/api/stats", async (req, res) => {
+  // se você já tem essa rota real, substitua este conteúdo
   res.json({ ok: true });
 });
 
-// ====== FRONTEND ======
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// TODO: suas outras rotas:
+// app.get("/api/produtos", ...)
+// app.post("/api/produtos", ...)
+// app.get("/api/clientes", ...)
+// app.get("/api/simulacoes", ...)
+// etc...
 
-// IMPORTANTE:
-// server.js está em /server
-// frontend está em /web
-const WEB_DIR = path.join(__dirname, "../web");
-
-// serve arquivos estáticos (index.html, api-config.js, css, etc)
-app.use(express.static(WEB_DIR));
-
-// fallback: qualquer rota que não seja /api vai para index.html
+// 3) Fallback SPA (sempre por último)
 app.get("*", (req, res) => {
   res.sendFile(path.join(WEB_DIR, "index.html"));
 });
