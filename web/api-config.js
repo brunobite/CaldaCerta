@@ -1,7 +1,8 @@
 // web/api-config.js
 // PRODUÇÃO (Render): mesma origem -> /api
 
-window.API_BASE = ""; // => /api/...
+window.API_BASE = ""; // =
+"https://caldacerta-1.onrender.com"
 
 async function apiFetch(path, options = {}) {
   const url = `${window.API_BASE}${path}`;
