@@ -1,3 +1,4 @@
+console.log("TESTE DEPLOY " + Date.now());
 // web/api-config.js
 // Caminho A (Render): usar API RELATIVA do mesmo host => /api/...
 
