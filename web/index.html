@@ -1436,23 +1436,26 @@
         // Inicializar bancos de dados da API
         async function initBancosDados() {
             try {
-                console.log('📡 Carregando dados da API...');
-                if (!window.API || typeof API.getProdutos !== "function") {
-                    throw new Error("Objeto API não encontrado. Verifique o api-config.js");
+                // Carregar produtos do Firebase (se o usuário estiver logado)
+                if (currentUserData) {
+                    const produtosRef = db.ref('produtos/' + currentUserData.uid);
+                    const snapshot = await produtosRef.once('value');
+                    const produtosData = snapshot.val() || {};
+                    bancoProdutos = Object.keys(produtosData).map(key => ({
+                        id: key,
+                        ...produtosData[key]
+                    }));
+                    console.log(`✅ ${bancoProdutos.length} produtos carregados do Firebase`);
+                } else {
+                    bancoProdutos = [];
                 }
 
-                bancoProdutos = await API.getProdutos();
-                console.log(`✅ ${bancoProdutos.length} produtos carregados`);
+                // Listas padrão (podem ser expandidas conforme necessário)
+                bancoClientes = [];
+                bancoResponsaveis = [];
+                bancoOperadores = [];
 
-                const clientes = await API.getClientes();
-                const responsaveis = await API.getResponsaveis();
-                const operadores = await API.getOperadores();
-
-                bancoClientes = clientes.map(c => c.nome);
-                bancoResponsaveis = responsaveis.map(r => r.nome);
-                bancoOperadores = operadores.map(o => o.nome);
-
-                console.log(`✅ ${bancoClientes.length} clientes, ${bancoResponsaveis.length} responsáveis, ${bancoOperadores.length} operadores`);
+                console.log('✅ Usando Firebase como banco de dados');
 
                 preencherDatalist('clientes-list', bancoClientes);
                 preencherDatalist('propriedades-list', bancoPropriedades);
@@ -1462,10 +1465,9 @@
 
                 preencherSelectProdutos();
 
-                console.log('✅ Bancos de dados carregados com sucesso!');
+                console.log('✅ Bancos de dados Firebase carregados!');
             } catch (error) {
-                console.error('❌ Erro ao carregar dados da API:', error);
-                showToast('⚠️ Erro ao conectar com servidor. Verifique se está rodando.', 'error');
+                console.error('❌ Erro ao carregar do Firebase:', error);
             }
         }
 
@@ -1532,7 +1534,19 @@
 
         async function loadHistory() {
             try {
-                historicalData = await API.getSimulacoes();
+                // Carregar histórico do Firebase
+                if (currentUserData) {
+                    const histRef = db.ref('simulacoes/' + currentUserData.uid);
+                    const snapshot = await histRef.once('value');
+                    const data = snapshot.val() || {};
+                    historicalData = Object.keys(data).map(key => ({
+                        id: key,
+                        ...data[key]
+                    }));
+                    console.log(`✅ ${historicalData.length} simulações carregadas do Firebase`);
+                } else {
+                    historicalData = [];
+                }
                 renderHistoryList(historicalData);
             } catch (e) {
                 console.error('Erro ao carregar histórico:', e);
@@ -1619,16 +1633,30 @@
             };
 
             try {
-                await API.saveSimulacao(payload);
-                showToast('✅ Simulação salva no servidor!', 'success');
-                btn.innerHTML = '<i class="fa-solid fa-check"></i> Salvo no Servidor';
+                // Salvar no Firebase
+                if (!currentUserData) {
+                    showToast('❌ Você precisa estar logado!', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
+                    return;
+                }
+
+                const simRef = db.ref('simulacoes/' + currentUserData.uid);
+                await simRef.push({
+                    ...payload,
+                    userEmail: currentUserData.email,
+                    createdAt: new Date().toISOString()
+                });
+
+                showToast('✅ Simulação salva com sucesso!', 'success');
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Salvo com Sucesso';
                 btn.classList.add('opacity-50');
 
                 await loadHistory();
                 await initBancosDados();
             } catch (e) {
                 console.error('Erro ao salvar:', e);
-                showToast('❌ Erro ao salvar no servidor', 'error');
+                showToast('❌ Erro ao salvar simulação', 'error');
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
             }
@@ -1682,8 +1710,20 @@
 
         window.viewSimulation = async (id) => {
             try {
-                const item = await API.getSimulacao(id);
-                if (!item) return;
+                // Buscar do Firebase
+                if (!currentUserData) {
+                    showToast('❌ Você precisa estar logado!', 'error');
+                    return;
+                }
+
+                const simRef = db.ref('simulacoes/' + currentUserData.uid + '/' + id);
+                const snapshot = await simRef.once('value');
+                const item = snapshot.val();
+
+                if (!item) {
+                    showToast('❌ Simulação não encontrada', 'error');
+                    return;
+                }
 
                 document.getElementById('id_cliente').value = item.cliente;
                 document.getElementById('id_propriedade').value = item.propriedade;
@@ -1831,9 +1871,20 @@
 
             if (!usandoBanco && !bancoProdutos.find(bp => bp.nome === nome && bp.marca === marca)) {
                 try {
-                    await API.saveProduto({ nome, marca, formulacao, tipo, ph });
-                    await initBancosDados();
-                    showToast('💾 Produto adicionado ao banco de dados', 'success');
+                    // Salvar produto no Firebase
+                    if (currentUserData) {
+                        const prodRef = db.ref('produtos/' + currentUserData.uid);
+                        await prodRef.push({
+                            nome,
+                            marca,
+                            formulacao,
+                            tipo,
+                            ph,
+                            createdAt: new Date().toISOString()
+                        });
+                        await initBancosDados();
+                        showToast('💾 Produto salvo no banco de dados', 'success');
+                    }
                 } catch (e) {
                     console.error('Erro ao salvar produto:', e);
                 }
