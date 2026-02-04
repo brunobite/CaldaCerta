@@ -1,34 +1,28 @@
-const express = require("express");
-const path = require("path");
-const { existsSync } = require("fs");
-
+const express = require('express');
+const path = require('path');
 const app = express();
-const PORT = process.env.PORT || 3000;
-const WEB_DIR = path.join(__dirname, "..", "web");
 
-console.log("🚀 CaldaCerta Pro - Frontend com Firebase");
+// 🔧 CONFIGURAÇÃO PARA SERVIR O FRONTEND DA PASTA 'web/'
 
-if (!existsSync(WEB_DIR)) {
-  console.error("❌ Pasta 'web' não encontrada!");
-  process.exit(1);
-}
+// 1. Servir arquivos estáticos da pasta 'web'
+app.use(express.static(path.join(__dirname, '../web')));
 
-app.use(express.static(WEB_DIR));
+// 2. Servir também arquivos da pasta atual (server) se necessário
+app.use(express.static(__dirname));
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    service: "CaldaCerta Pro Frontend",
-    backend: "Firebase Realtime Database",
-    timestamp: new Date().toISOString()
-  });
+// 3. Para todas as outras rotas, servir index.html (Single Page App)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../web/index.html'));
 });
 
-app.get("*", (req, res) => {
-  res.sendFile(path.join(WEB_DIR, "index.html"));
+// 🔧 API endpoints (se houver)
+app.get('/api/status', (req, res) => {
+  res.json({ status: 'OK', message: 'CaldaCerta Pro Online' });
 });
 
+// 🔧 Configurar porta
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`✅ Servidor na porta ${PORT}`);
-  console.log(`🌐 Acesse: http://localhost:${PORT}`);
+  console.log(`🚀 Servidor CaldaCerta rodando na porta ${PORT}`);
+  console.log(`📁 Servindo frontend de: ${path.join(__dirname, '../web')}`);
 });
