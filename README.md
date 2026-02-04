@@ -28,6 +28,10 @@ cd server
 npm install
 ```
 
+## ☁️ Deploy Manual
+
+Para publicar o app em um servidor remoto, siga o guia em `DEPLOY.md`.
+
 ## ▶️ Como Usar
 
 ### Iniciar o Servidor
