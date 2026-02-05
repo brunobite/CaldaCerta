@@ -726,6 +726,14 @@
             document.getElementById('res_rendimento').innerText = rendimento;
         };
 
+        // Atualizar observação do produto
+        window.updateProductObservation = (productId, observacao) => {
+            const product = products.find(p => p.id === productId);
+            if (product) {
+                product.observacao = observacao;
+            }
+        };
+
         window.renderOrdem = () => {
             const jarra = parseFloat(document.getElementById('jarra_vol').value);
             const vazao = parseFloat(document.getElementById('eq_vazao').value) || 100;
@@ -747,6 +755,7 @@
                 const doseTanque = ((p.dose * tanque) / vazao).toFixed(2);
                 const volumeTotal = (p.dose * area).toFixed(2);
                 const phDisplay = p.ph ? `pH: ${p.ph}` : '';
+                const observacao = p.observacao || '';
 
                 return `
                     <div class="product-item ordem-card" data-id="${p.id}">
@@ -759,9 +768,21 @@
                                     ${phDisplay ? `<span class="badge badge-success">${phDisplay}</span>` : ''}
                                 </div>
                             </div>
-                            <h4 class="text-lg font-black text-slate-800 mb-1">${p.nome}</h4>
-                            <p class="text-sm text-slate-600 mb-3">${p.marca}</p>
-                            <div class="grid grid-3 gap-2">
+                            <div class="ordem-card-content">
+                                <div class="ordem-card-info">
+                                    <h4 class="text-lg font-black text-slate-800 mb-1">${p.nome}</h4>
+                                    <p class="text-sm text-slate-600">${p.marca}</p>
+                                </div>
+                                <div class="ordem-card-obs">
+                                    <textarea
+                                        class="observacao-input"
+                                        placeholder="Observações do produto..."
+                                        data-product-id="${p.id}"
+                                        onchange="updateProductObservation('${p.id}', this.value)"
+                                    >${observacao}</textarea>
+                                </div>
+                            </div>
+                            <div class="grid grid-3 gap-2" style="margin-top: 0.75rem;">
                                 <div class="dose-box" style="padding: 0.5rem;">
                                     <p class="dose-label" style="font-size: 0.65rem;">Jarra (${jarra}ml)</p>
                                     <p class="dose-value" style="font-size: 1.25rem;">${doseJarra} ml</p>
@@ -954,7 +975,7 @@
             const tableData = displayProducts.map((p, i) => [
                 `${i + 1}`,
                 p.nome,
-                p.marca,
+                p.observacao || '-',
                 p.ph ? `pH ${p.ph}` : '-',
                 `${p.dose}`,
                 `${((p.dose * jarra) / vazao).toFixed(2)}`,
@@ -964,7 +985,7 @@
 
             doc.autoTable({
                 startY: y,
-                head: [['#', 'Produto', 'Marca', 'pH', 'Dose/ha', `Jarra\n(${jarra}ml)`, `TOTAL\n(${area}ha)`, 'DOSE\nTANQUE']],
+                head: [['#', 'Produto', 'Observação', 'pH', 'Dose/ha', `Jarra\n(${jarra}ml)`, `TOTAL\n(${area}ha)`, 'DOSE\nTANQUE']],
                 body: tableData,
                 theme: 'grid',
                 headStyles: {

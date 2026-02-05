@@ -616,6 +616,56 @@
             font-family: 'Space Mono', monospace;
         }
 
+        /* Layout do card de ordem - nome e observação lado a lado */
+        .ordem-card-content {
+            display: flex;
+            gap: 1rem;
+            align-items: stretch;
+        }
+
+        .ordem-card-info {
+            flex: 0 0 auto;
+            min-width: 150px;
+        }
+
+        .ordem-card-obs {
+            flex: 1;
+            display: flex;
+        }
+
+        .observacao-input {
+            width: 100%;
+            min-height: 60px;
+            padding: 0.75rem;
+            border: 2px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            background: #ffffff;
+        }
+
+        .observacao-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .observacao-input::placeholder {
+            color: #9ca3af;
+        }
+
+        @media (max-width: 600px) {
+            .ordem-card-content {
+                flex-direction: column;
+            }
+
+            .ordem-card-info {
+                min-width: auto;
+            }
+        }
+
         .w-20 { width: 5rem; height: 5rem; }
 
         .checkbox-container {
