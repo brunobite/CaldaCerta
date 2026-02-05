@@ -44,6 +44,7 @@
         let cachedHistory = null;
         let cacheTime = 0;
         const HISTORY_CACHE_DURATION = 5 * 60 * 1000;
+        let usingLocalHistoryData = false;
         let currentStepIdx = 0;
         const steps = ['menu', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6'];
         let sortableInstance = null;
@@ -225,6 +226,17 @@
             }
         }
 
+        function upsertLocalHistoryItem(item) {
+            const idx = historicalData.findIndex(h => h.id === item.id && h.uid === item.uid);
+            if (idx >= 0) {
+                historicalData[idx] = { ...historicalData[idx], ...item };
+            } else {
+                historicalData.push(item);
+            }
+            cachedHistory = [...historicalData];
+            cacheTime = Date.now();
+        }
+
         async function loadAdminHistory() {
             const usersSnapshot = await db.ref('users').once('value');
             const users = usersSnapshot.val() || {};
@@ -290,8 +302,10 @@
                 if (isUserAdmin) {
                     await loadAdminHistory();
                     await saveHistoryCache(historicalData);
+                    usingLocalHistoryData = false;
                 } else {
                     await loadUserHistory();
+                    usingLocalHistoryData = false;
                 }
 
                 cachedHistory = [...historicalData];
@@ -306,6 +320,7 @@
                     const cached = await loadHistoryCache();
                     if (cached.length) {
                         historicalData = cached;
+                        usingLocalHistoryData = true;
                         renderHistoryList(historicalData);
                         showToast('⚠️ Firebase bloqueou o acesso. Exibindo histórico salvo no servidor local.', 'error');
                         return;
@@ -325,6 +340,20 @@
 
         window.refreshHistory = () => {
             loadHistory(true);
+        };
+
+        window.openLocalHistoryCache = async () => {
+            const targetUrl = `${window.location.origin}/api/history-cache`;
+            window.open(targetUrl, '_blank');
+            const cached = await loadHistoryCache();
+            if (!cached.length) {
+                showToast('⚠️ Nenhum histórico local salvo ainda.', 'error');
+                return;
+            }
+            historicalData = cached;
+            usingLocalHistoryData = true;
+            renderHistoryList(historicalData);
+            showToast('✅ Histórico local carregado para visualização do admin.', 'success');
         };
 
         function sortProductsByHierarchy(products, criterio = 'tipo') {
@@ -492,6 +521,25 @@
                 await initBancosDados();
             } catch (e) {
                 console.error('Erro ao salvar:', e);
+                const isPermissionDenied = e?.code === 'PERMISSION_DENIED' || String(e?.message || '').includes('permission_denied');
+                if (isPermissionDenied && isUserAdmin && currentEditingSimulation?.id) {
+                    const now = new Date().toISOString();
+                    const fallbackItem = {
+                        id: currentEditingSimulation.id,
+                        uid: currentEditingSimulation.uid || currentUserData.uid,
+                        userEmail: currentEditingSimulation.userEmail || currentUserData.email,
+                        createdAt: currentEditingSimulation.createdAt || now,
+                        updatedAt: now,
+                        ...payload
+                    };
+                    upsertLocalHistoryItem(fallbackItem);
+                    await saveHistoryCache(historicalData);
+                    renderHistoryList(historicalData);
+                    showToast('⚠️ Firebase bloqueou a escrita. Alteração salva apenas no cache local.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
+                    return;
+                }
                 showToast('❌ Erro ao salvar simulação', 'error');
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
@@ -1553,6 +1601,11 @@
                     if (typeof loadHistory === 'function') {
                         loadHistory();
                     }
+
+                    const localHistoryBtn = document.getElementById('btn-local-history');
+                    if (localHistoryBtn) {
+                        localHistoryBtn.classList.toggle('hidden', !isUserAdmin);
+                    }
                     
                     showToast('✅ Bem-vindo(a), ' + (userData?.name || user.email) + '!', 'success');
                 } catch (error) {
@@ -1561,6 +1614,7 @@
             } else {
                 currentUserData = null;
                 isUserAdmin = false;
+                usingLocalHistoryData = false;
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-app').classList.remove('show');
             }
