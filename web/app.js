@@ -517,7 +517,8 @@
                     dose: p.dose,
                     formulacao: p.formulacao,
                     tipo: p.tipo,
-                    ph: p.ph
+                    ph: p.ph,
+                    observacao: p.observacao || ''
                 }));
 
                 currentEditingSimulation = {
@@ -778,7 +779,7 @@
                                         class="observacao-input"
                                         placeholder="Observações do produto..."
                                         data-product-id="${p.id}"
-                                        onchange="updateProductObservation('${p.id}', this.value)"
+                                        oninput="updateProductObservation('${p.id}', this.value)"
                                     >${observacao}</textarea>
                                 </div>
                             </div>
