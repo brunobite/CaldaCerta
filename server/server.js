@@ -4,6 +4,14 @@ const app = express();
 
 // 🔧 CONFIGURAÇÃO PARA SERVIR O FRONTEND DA PASTA 'web/'
 
+// Desabilitar cache durante desenvolvimento
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
+
 // 1. Servir arquivos estáticos da pasta 'web'
 app.use(express.static(path.join(__dirname, '../web')));
 
