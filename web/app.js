@@ -975,7 +975,7 @@
             const tableData = displayProducts.map((p, i) => [
                 `${i + 1}`,
                 p.nome,
-                p.marca,
+                p.observacao || '-',
                 p.ph ? `pH ${p.ph}` : '-',
                 `${p.dose}`,
                 `${((p.dose * jarra) / vazao).toFixed(2)}`,
@@ -985,7 +985,7 @@
 
             doc.autoTable({
                 startY: y,
-                head: [['#', 'Produto', 'Marca', 'pH', 'Dose/ha', `Jarra\n(${jarra}ml)`, `TOTAL\n(${area}ha)`, 'DOSE\nTANQUE']],
+                head: [['#', 'Produto', 'Observação', 'pH', 'Dose/ha', `Jarra\n(${jarra}ml)`, `TOTAL\n(${area}ha)`, 'DOSE\nTANQUE']],
                 body: tableData,
                 theme: 'grid',
                 headStyles: {
