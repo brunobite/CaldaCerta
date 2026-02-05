@@ -44,7 +44,6 @@
         let cachedHistory = null;
         let cacheTime = 0;
         const HISTORY_CACHE_DURATION = 5 * 60 * 1000;
-        let usingLocalHistoryData = false;
         let currentStepIdx = 0;
         const steps = ['menu', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6'];
         let sortableInstance = null;
@@ -202,71 +201,6 @@
             loader.style.display = show ? 'flex' : 'none';
         }
 
-        async function saveHistoryCache(data) {
-            try {
-                await fetch('/api/history-cache', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data })
-                });
-            } catch (error) {
-                console.warn('Não foi possível salvar cache do histórico no servidor local:', error);
-            }
-        }
-
-        async function loadHistoryCache() {
-            try {
-                const response = await fetch('/api/history-cache');
-                if (!response.ok) return [];
-                const payload = await response.json();
-                return Array.isArray(payload?.data) ? payload.data : [];
-            } catch (error) {
-                console.warn('Não foi possível carregar cache do histórico do servidor local:', error);
-                return [];
-            }
-        }
-
-        function upsertLocalHistoryItem(item) {
-            const idx = historicalData.findIndex(h => h.id === item.id && h.uid === item.uid);
-            if (idx >= 0) {
-                historicalData[idx] = { ...historicalData[idx], ...item };
-            } else {
-                historicalData.push(item);
-            }
-            cachedHistory = [...historicalData];
-            cacheTime = Date.now();
-        }
-
-        async function loadAdminHistory() {
-            const usersSnapshot = await db.ref('users').once('value');
-            const users = usersSnapshot.val() || {};
-            const userIds = Object.keys(users);
-
-            const allResults = await Promise.all(userIds.map(async (uid) => {
-                try {
-                    const histRef = db.ref('simulacoes/' + uid);
-                    const snapshot = await histRef.once('value');
-                    const sims = snapshot.val() || {};
-
-                    return Object.entries(sims)
-                        .filter(([_, sim]) => validateSimulation(sim))
-                        .map(([id, sim]) => ({
-                            id,
-                            uid,
-                            userEmail: users[uid]?.email || users[uid]?.email_admin || '',
-                            userName: users[uid]?.name || '',
-                            ...sim
-                        }));
-                } catch (userError) {
-                    console.warn(`Não foi possível acessar simulações do usuário ${uid}:`, userError);
-                    return [];
-                }
-            }));
-
-            historicalData = allResults.flat();
-            console.log(`✅ ${historicalData.length} simulações carregadas (modo admin)`);
-        }
-
         async function loadUserHistory() {
             const histRef = db.ref('simulacoes/' + currentUserData.uid);
             const snapshot = await histRef.once('value');
@@ -298,15 +232,7 @@
                 }
 
                 showHistoryLoading(true);
-
-                if (isUserAdmin) {
-                    await loadAdminHistory();
-                    await saveHistoryCache(historicalData);
-                    usingLocalHistoryData = false;
-                } else {
-                    await loadUserHistory();
-                    usingLocalHistoryData = false;
-                }
+                await loadUserHistory();
 
                 cachedHistory = [...historicalData];
                 cacheTime = now;
@@ -314,24 +240,10 @@
             } catch (e) {
                 console.error('Erro ao carregar histórico:', e);
                 historicalData = [];
-                const isPermissionDenied = e?.code === 'PERMISSION_DENIED' || String(e?.message || '').includes('permission_denied');
                 const isNetworkError = String(e?.message || '').toLowerCase().includes('network');
-                if (isPermissionDenied) {
-                    const cached = await loadHistoryCache();
-                    if (cached.length) {
-                        historicalData = cached;
-                        usingLocalHistoryData = true;
-                        renderHistoryList(historicalData);
-                        showToast('⚠️ Firebase bloqueou o acesso. Exibindo histórico salvo no servidor local.', 'error');
-                        return;
-                    }
-                }
-
-                const message = isPermissionDenied
-                    ? '⚠️ Acesso negado ao histórico. Verifique as regras do Firebase para permitir leitura de simulações por admins.'
-                    : isNetworkError
-                        ? '⚠️ Erro de conexão. Tente novamente.'
-                        : '⚠️ Erro ao carregar histórico';
+                const message = isNetworkError
+                    ? '⚠️ Erro de conexão. Tente novamente.'
+                    : '⚠️ Erro ao carregar histórico';
                 showToast(message, 'error');
             } finally {
                 showHistoryLoading(false);
@@ -340,20 +252,6 @@
 
         window.refreshHistory = () => {
             loadHistory(true);
-        };
-
-        window.openLocalHistoryCache = async () => {
-            const targetUrl = `${window.location.origin}/api/history-cache`;
-            window.open(targetUrl, '_blank');
-            const cached = await loadHistoryCache();
-            if (!cached.length) {
-                showToast('⚠️ Nenhum histórico local salvo ainda.', 'error');
-                return;
-            }
-            historicalData = cached;
-            usingLocalHistoryData = true;
-            renderHistoryList(historicalData);
-            showToast('✅ Histórico local carregado para visualização do admin.', 'success');
         };
 
         function sortProductsByHierarchy(products, criterio = 'tipo') {
@@ -493,8 +391,8 @@
                 }
 
                 const now = new Date().toISOString();
-                const editingAllowed = currentEditingSimulation && (isUserAdmin || currentEditingSimulation.uid === currentUserData.uid);
-                const targetUid = editingAllowed ? currentEditingSimulation.uid : currentUserData.uid;
+                const editingAllowed = currentEditingSimulation && currentEditingSimulation.uid === currentUserData.uid;
+                const targetUid = currentUserData.uid;
                 const targetRef = db.ref(`simulacoes/${targetUid}`);
 
                 if (editingAllowed && currentEditingSimulation?.id) {
@@ -521,25 +419,6 @@
                 await initBancosDados();
             } catch (e) {
                 console.error('Erro ao salvar:', e);
-                const isPermissionDenied = e?.code === 'PERMISSION_DENIED' || String(e?.message || '').includes('permission_denied');
-                if (isPermissionDenied && isUserAdmin && currentEditingSimulation?.id) {
-                    const now = new Date().toISOString();
-                    const fallbackItem = {
-                        id: currentEditingSimulation.id,
-                        uid: currentEditingSimulation.uid || currentUserData.uid,
-                        userEmail: currentEditingSimulation.userEmail || currentUserData.email,
-                        createdAt: currentEditingSimulation.createdAt || now,
-                        updatedAt: now,
-                        ...payload
-                    };
-                    upsertLocalHistoryItem(fallbackItem);
-                    await saveHistoryCache(historicalData);
-                    renderHistoryList(historicalData);
-                    showToast('⚠️ Firebase bloqueou a escrita. Alteração salva apenas no cache local.', 'error');
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
-                    return;
-                }
                 showToast('❌ Erro ao salvar simulação', 'error');
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
@@ -581,15 +460,9 @@
                 const date = item.data_aplicacao ? new Date(item.data_aplicacao).toLocaleDateString('pt-BR') : 'Data não informada';
                 const prodCount = getProdutoCount(item);
                 const prodResumo = getProdutoResumo(item);
-                const adminInfo = isUserAdmin ? `<span class="badge badge-accent">Usuário: ${item.userEmail || item.uid || 'N/D'}</span>` : '';
-                const adminEditButton = isUserAdmin ? `
-                    <button class="btn btn-secondary text-xs" onclick="event.stopPropagation(); viewSimulation('${item.id}', '${item.uid || ''}')">
-                        <i class="fa-solid fa-pen mr-1"></i> Editar
-                    </button>
-                ` : '';
 
                 return `
-                    <div class="card card-medium history-card" onclick="viewSimulation('${item.id}', '${item.uid || ''}')">
+                    <div class="card card-medium history-card" onclick="viewSimulation('${item.id}')">
                         <div class="flex justify-between items-start mb-3">
                             <div>
                                 <h4 class="font-black text-xl text-slate-800 mb-1">${item.cliente}</h4>
@@ -597,7 +470,7 @@
                             </div>
                             <div class="flex flex-col items-end gap-2">
                                 <span class="badge badge-primary">${item.cultura}</span>
-                                ${adminEditButton}
+                                
                             </div>
                         </div>
                         <div class="history-meta text-sm text-slate-500">
@@ -605,8 +478,7 @@
                             <span><i class="fa-solid fa-map-marked-alt mr-1"></i>${item.area} ha</span>
                             <span><i class="fa-solid fa-box mr-1"></i>${prodCount} produto${prodCount !== 1 ? 's' : ''}</span>
                         </div>
-                        ${isUserAdmin && prodResumo ? `<div class="mt-2 text-xs text-slate-500"><strong>Mistura:</strong> ${prodResumo}</div>` : ''}
-                        ${adminInfo ? `<div class="mt-2 text-xs text-slate-500">${adminInfo}</div>` : ''}
+                        ${prodResumo ? `<div class="mt-2 text-xs text-slate-500"><strong>Mistura:</strong> ${prodResumo}</div>` : ''}
                     </div>
                 `;
             }).join('');
@@ -619,13 +491,12 @@
                 const propriedade = (item.propriedade || '').toLowerCase();
                 const cultura = (item.cultura || '').toLowerCase();
                 const talhao = (item.talhao || '').toLowerCase();
-                const usuario = (item.userEmail || item.uid || '').toLowerCase();
-                return cliente.includes(query) || propriedade.includes(query) || cultura.includes(query) || talhao.includes(query) || usuario.includes(query);
+                return cliente.includes(query) || propriedade.includes(query) || cultura.includes(query) || talhao.includes(query);
             });
             renderHistoryList(filtered);
         };
 
-        window.viewSimulation = async (id, uidOverride = '') => {
+        window.viewSimulation = async (id) => {
             try {
                 // Buscar do Firebase
                 if (!currentUserData) {
@@ -633,7 +504,7 @@
                     return;
                 }
 
-                const ownerUid = uidOverride || currentUserData.uid;
+                const ownerUid = currentUserData.uid;
                 const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
                 const snapshot = await simRef.once('value');
                 const item = snapshot.val();
@@ -1602,10 +1473,6 @@
                         loadHistory();
                     }
 
-                    const localHistoryBtn = document.getElementById('btn-local-history');
-                    if (localHistoryBtn) {
-                        localHistoryBtn.classList.toggle('hidden', !isUserAdmin);
-                    }
                     
                     showToast('✅ Bem-vindo(a), ' + (userData?.name || user.email) + '!', 'success');
                 } catch (error) {
@@ -1614,7 +1481,6 @@
             } else {
                 currentUserData = null;
                 isUserAdmin = false;
-                usingLocalHistoryData = false;
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-app').classList.remove('show');
             }
