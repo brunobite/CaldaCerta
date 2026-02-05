@@ -803,21 +803,22 @@
 
             if (sortableInstance) sortableInstance.destroy();
 
-            if (!respeitar) {
-                sortableInstance = new Sortable(container, {
-                    animation: 150,
-                    handle: '.drag-handle',
-                    ghostClass: 'sortable-ghost',
-                    dragClass: 'sortable-drag',
-                    onEnd: function(evt) {
-                        const newIndex = evt.newIndex;
-                        const oldIndex = evt.oldIndex;
-                        const movedItem = products.splice(oldIndex, 1)[0];
-                        products.splice(newIndex, 0, movedItem);
-                        showToast('📦 Ordem atualizada', 'success');
-                    }
-                });
-            }
+            sortableInstance = new Sortable(container, {
+                animation: 150,
+                handle: '.drag-handle',
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                onEnd: function(evt) {
+                    const newIndex = evt.newIndex;
+                    const oldIndex = evt.oldIndex;
+                    const movedItem = products.splice(oldIndex, 1)[0];
+                    products.splice(newIndex, 0, movedItem);
+                    // Desmarcar critério ao reordenar manualmente
+                    document.getElementById('respeitarHierarquia').checked = false;
+                    toggleHierarchyOptions();
+                    showToast('Ordem atualizada manualmente', 'success');
+                }
+            });
         };
 
         // Clima
