@@ -45,7 +45,6 @@
         let historicalData = [];
         let currentStepIdx = 0;
         const steps = ['menu', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6'];
-        let sortableInstance = null;
         let climateData = null;
         let currentEditingSimulation = null;
 
@@ -406,6 +405,9 @@
             if (!validateRange('agua_ph', 0, 14, '❌ O pH da água deve estar entre 0 e 14')) {
                 return;
             }
+            if (!validateRange('calda_ph', 0, 14, '❌ O pH da calda deve estar entre 0 e 14')) {
+                return;
+            }
 
             if (products.length === 0) {
                 showToast('❌ Adicione pelo menos um produto', 'error');
@@ -435,6 +437,7 @@
                 agua_dureza: parseFloat(document.getElementById('agua_dureza').value) || null,
                 agua_origem: document.getElementById('agua_origem').value,
                 agua_observacoes: document.getElementById('agua_obs').value,
+                calda_ph: parseFloat(document.getElementById('calda_ph').value) || null,
                 jarra_volume: parseInt(document.getElementById('jarra_vol').value),
                 respeitar_hierarquia: document.getElementById('respeitarHierarquia').checked ? 1 : 0,
                 criterio_ordenacao: document.getElementById('criterioOrdenacao').value,
@@ -617,6 +620,7 @@
                 document.getElementById('agua_dureza').value = item.agua_dureza || '';
                 document.getElementById('agua_origem').value = item.agua_origem || 'Poço';
                 document.getElementById('agua_obs').value = item.agua_observacoes || '';
+                document.getElementById('calda_ph').value = item.calda_ph || '';
 
                 products = (item.produtos || []).map(p => ({
                     id: p.id || (Date.now() + Math.random()),
@@ -864,12 +868,14 @@
                 const doseJarra = ((p.dose * jarra) / vazao).toFixed(2);
                 const doseTanque = ((p.dose * tanque) / vazao).toFixed(2);
                 const volumeTotal = (p.dose * area).toFixed(2);
-                const phDisplay = p.ph ? `pH: ${p.ph}` : '';
+                const phDisplay = p.ph ? `pH FISPQ: ${p.ph}` : '';
                 const observacao = p.observacao || '';
+                const orderOptions = displayProducts
+                    .map((_, idx) => `<option value="${idx}" ${idx === i ? 'selected' : ''}>Ordem ${idx + 1}</option>`)
+                    .join('');
 
                 return `
                     <div class="product-item ordem-card" data-id="${p.id}">
-                        <i class="fa-solid fa-grip-vertical drag-handle"></i>
                         <div class="flex-1">
                             <div class="flex justify-between items-center mb-3">
                                 <div class="flex items-center gap-3">
@@ -877,6 +883,11 @@
                                     <span class="badge badge-accent">${p.formulacao}</span>
                                     ${phDisplay ? `<span class="badge badge-success">${phDisplay}</span>` : ''}
                                 </div>
+                                ${respeitar ? '' : `
+                                    <select class="input-box ordem-select" aria-label="Selecionar ordem do produto" data-product-id="${p.id}">
+                                        ${orderOptions}
+                                    </select>
+                                `}
                             </div>
                             <div class="ordem-card-content">
                                 <div class="ordem-card-info">
@@ -892,18 +903,10 @@
                                     >${observacao}</textarea>
                                 </div>
                             </div>
-                            <div class="grid grid-3 gap-2" style="margin-top: 0.75rem;">
+                            <div class="grid gap-2" style="margin-top: 0.75rem;">
                                 <div class="dose-box" style="padding: 0.5rem;">
                                     <p class="dose-label" style="font-size: 0.65rem;">Jarra (${jarra}ml)</p>
                                     <p class="dose-value" style="font-size: 1.25rem;">${doseJarra} ml</p>
-                                </div>
-                                <div class="dose-box" style="padding: 0.5rem;">
-                                    <p class="dose-label" style="font-size: 0.65rem;">Tanque</p>
-                                    <p class="dose-value" style="font-size: 1.25rem;">${doseTanque} ${p.dose < 1 ? 'ml' : 'L'}</p>
-                                </div>
-                                <div class="dose-box" style="padding: 0.5rem;">
-                                    <p class="dose-label" style="font-size: 0.65rem;">Total (${area} ha)</p>
-                                    <p class="dose-value" style="font-size: 1.25rem;">${volumeTotal} ${p.dose < 1 ? 'ml' : 'L'}</p>
                                 </div>
                             </div>
                         </div>
@@ -911,29 +914,29 @@
                 `;
             }).join('');
 
-            if (sortableInstance) sortableInstance.destroy();
-
-            if (!respeitar) {
-                sortableInstance = new Sortable(container, {
-                    animation: 150,
-                    handle: '.drag-handle',
-                    ghostClass: 'sortable-ghost',
-                    dragClass: 'sortable-drag',
-                    onEnd: function(evt) {
-                        const newIndex = evt.newIndex;
-                        const oldIndex = evt.oldIndex;
-                        const movedItem = products.splice(oldIndex, 1)[0];
-                        products.splice(newIndex, 0, movedItem);
-                        showToast('📦 Ordem atualizada', 'success');
+            container.querySelectorAll('.ordem-select').forEach(select => {
+                select.addEventListener('change', (event) => {
+                    const productId = event.target.dataset.productId;
+                    const newIndex = Number(event.target.value);
+                    const currentIndex = products.findIndex(item => item.id === productId);
+                    if (currentIndex === -1 || newIndex === currentIndex) {
+                        return;
                     }
+                    const movedItem = products.splice(currentIndex, 1)[0];
+                    products.splice(newIndex, 0, movedItem);
+                    renderOrdem();
+                    showToast('📦 Ordem atualizada', 'success');
                 });
-            }
+            });
         };
 
         // Clima
         function checkClimateConditions(deltaTValues) {
             const alertContainer = document.getElementById('alert-container');
-            const deltaT = deltaTValues && deltaTValues.length ? deltaTValues : [2, 3, 5, 8, 6, 4, 3, 2, 4, 5, 3, 2];
+            const deltaT = deltaTValues && deltaTValues.length ? deltaTValues : [
+                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
+            ];
             const maxDelta = Math.max(...deltaT);
             const minDelta = Math.min(...deltaT);
 
@@ -1087,7 +1090,7 @@
                 `${i + 1}`,
                 p.nome,
                 p.observacao || '-',
-                p.ph ? `pH ${p.ph}` : '-',
+                p.ph ? `${p.ph}` : '-',
                 `${p.dose}`,
                 `${((p.dose * jarra) / vazao).toFixed(2)}`,
                 `${(p.dose * area).toFixed(1)}`,
@@ -1096,7 +1099,7 @@
 
             doc.autoTable({
                 startY: y,
-                head: [['#', 'Produto', 'Observação', 'pH', 'Dose/ha', `Jarra\n(${jarra}ml)`, `TOTAL\n(${area}ha)`, 'DOSE\nTANQUE']],
+                head: [['#', 'Produto', 'Observação', 'pH FISPQ', 'Dose/ha', `Jarra\n(${jarra}ml)`, `TOTAL\n(${area}ha)`, 'DOSE\nTANQUE']],
                 body: tableData,
                 theme: 'grid',
                 headStyles: {
@@ -1160,6 +1163,7 @@
             y = 43;
 
             const ph = document.getElementById('agua_ph').value || 'Não informado';
+            const caldaPh = document.getElementById('calda_ph').value || 'Não informado';
             const dureza = document.getElementById('agua_dureza').value || 'Não informado';
             const origem = document.getElementById('agua_origem').value;
             const obs = document.getElementById('agua_obs').value || 'Sem observações';
@@ -1169,6 +1173,8 @@
             doc.text(`Origem: ${origem}`, 140, y);
             y += 6;
             doc.text(`Observações: ${obs}`, 15, y);
+            y += 6;
+            doc.text(`pH na calda: ${caldaPh}`, 15, y);
 
             y += 15;
             doc.setFontSize(11);
@@ -1198,10 +1204,19 @@
             charts.forEach(c => c.destroy());
             charts = [];
 
-            const hours = climateData?.labels || Array.from({length: 12}, (_, i) => `${i + 6}h`);
-            const deltaSeries = climateData?.deltaT || [2, 3, 5, 8, 6, 4, 3, 2, 4, 5, 3, 2];
-            const temperatureSeries = climateData?.temperatures || [20, 22, 25, 28, 31, 33, 32, 30, 28, 26, 24, 22];
-            const humiditySeries = climateData?.humidity || [80, 75, 68, 60, 52, 48, 45, 50, 58, 65, 72, 78];
+            const hours = climateData?.labels || Array.from({length: 24}, (_, i) => `${String(i).padStart(2, '0')}h`);
+            const deltaSeries = climateData?.deltaT || [
+                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
+            ];
+            const temperatureSeries = climateData?.temperatures || [
+                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
+                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20
+            ];
+            const humiditySeries = climateData?.humidity || [
+                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
+                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
+            ];
 
             const chartDeltaT = new Chart(document.getElementById('chartDeltaT'), {
                 type: 'line',
@@ -1340,9 +1355,9 @@
 
             const now = new Date();
             const startIndex = Math.max(times.findIndex(t => new Date(t) >= now), 0);
-            const sliceTimes = times.slice(startIndex, startIndex + 12);
-            const sliceTemps = temps.slice(startIndex, startIndex + 12);
-            const sliceHumidity = humidity.slice(startIndex, startIndex + 12);
+            const sliceTimes = times.slice(startIndex, startIndex + 24);
+            const sliceTemps = temps.slice(startIndex, startIndex + 24);
+            const sliceHumidity = humidity.slice(startIndex, startIndex + 24);
 
             const labels = sliceTimes.map(time => new Date(time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
             const deltaT = sliceTemps.map((temp, idx) => computeDeltaT(temp, sliceHumidity[idx] ?? 50));
