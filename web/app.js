@@ -935,6 +935,8 @@
             const alertContainer = document.getElementById('alert-container');
             const deltaT = deltaTValues && deltaTValues.length ? deltaTValues : [
                 2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2,
+                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
                 3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
             ];
             const maxDelta = Math.max(...deltaT);
@@ -984,7 +986,145 @@
                 `;
             }
 
+            const windAlert = buildWindAlert(climateData?.winds);
+            if (windAlert) {
+                alertHTML += windAlert;
+            }
+
+            const windowMessage = buildBestApplicationWindows(climateData?.deltaT, climateData?.labels);
+            alertHTML += `
+                <div class="alert alert-info">
+                    <i class="fa-solid fa-clock alert-icon"></i>
+                    <div>
+                        <h4 class="font-bold mb-1">⏱️ MELHORES HORÁRIOS PREVISTOS</h4>
+                        <p>${windowMessage}</p>
+                    </div>
+                </div>
+            `;
+
             alertContainer.innerHTML = alertHTML;
+        }
+
+        function buildWindAlert(windValues) {
+            const values = windValues?.length ? windValues : [
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
+            ];
+
+            const maxWind = Math.max(...values);
+            const minWind = Math.min(...values);
+
+            if (maxWind >= 15) {
+                return `
+                    <div class="alert alert-danger">
+                        <i class="fa-solid fa-wind alert-icon"></i>
+                        <div>
+                            <h4 class="font-bold mb-1">⚠️ VENTO ACIMA DO IDEAL</h4>
+                            <p>Ventos acima de 15 km/h previstos (máx: ${maxWind.toFixed(1)} km/h). Alto risco de deriva. Evitar aplicação.</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (maxWind >= 10) {
+                return `
+                    <div class="alert alert-warning">
+                        <i class="fa-solid fa-wind alert-icon"></i>
+                        <div>
+                            <h4 class="font-bold mb-1">⚠️ VENTO MODERADO</h4>
+                            <p>Ventos entre 10–15 km/h (máx: ${maxWind.toFixed(1)} km/h). Aplicação com cautela e ajuste de bicos/gotas.</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (minWind < 3) {
+                return `
+                    <div class="alert alert-warning">
+                        <i class="fa-solid fa-wind alert-icon"></i>
+                        <div>
+                            <h4 class="font-bold mb-1">⚠️ VENTO MUITO BAIXO</h4>
+                            <p>Ventos abaixo de 3 km/h (mín: ${minWind.toFixed(1)} km/h). Risco de inversão térmica e deriva vertical.</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="alert alert-success">
+                    <i class="fa-solid fa-wind alert-icon"></i>
+                    <div>
+                        <h4 class="font-bold mb-1">✅ VENTO IDEAL PARA APLICAÇÃO</h4>
+                        <p>Ventos entre 3–10 km/h. Condições favoráveis para pulverização.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function buildWindSummary(windValues) {
+            const values = windValues?.length ? windValues : [
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
+            ];
+
+            const maxWind = Math.max(...values);
+            const minWind = Math.min(...values);
+
+            if (maxWind >= 15) {
+                return `Ventos acima de 15 km/h previstos (máx: ${maxWind.toFixed(1)} km/h). Evitar aplicação.`;
+            }
+
+            if (maxWind >= 10) {
+                return `Ventos entre 10–15 km/h (máx: ${maxWind.toFixed(1)} km/h). Aplicação com cautela.`;
+            }
+
+            if (minWind < 3) {
+                return `Ventos abaixo de 3 km/h (mín: ${minWind.toFixed(1)} km/h). Risco de inversão térmica.`;
+            }
+
+            return 'Ventos entre 3–10 km/h. Condições favoráveis para aplicação.';
+        }
+
+        function buildBestApplicationWindows(deltaTValues, labels) {
+            if (!deltaTValues?.length || !labels?.length) {
+                return 'Sem dados de Delta T para estimar horários.';
+            }
+
+            const idealMin = 2;
+            const idealMax = 8;
+            const ranges = [];
+            let rangeStart = null;
+
+            deltaTValues.forEach((value, index) => {
+                const isIdeal = value >= idealMin && value <= idealMax;
+                if (isIdeal && rangeStart === null) {
+                    rangeStart = index;
+                }
+                if (!isIdeal && rangeStart !== null) {
+                    ranges.push([rangeStart, index - 1]);
+                    rangeStart = null;
+                }
+            });
+
+            if (rangeStart !== null) {
+                ranges.push([rangeStart, deltaTValues.length - 1]);
+            }
+
+            if (!ranges.length) {
+                return 'Nenhum horário com Delta T entre 2–8°C nas próximas 48h.';
+            }
+
+            const formatted = ranges.map(([start, end]) => {
+                const startLabel = labels[start] ?? '';
+                const endLabel = labels[end] ?? '';
+                return start === end ? startLabel : `${startLabel}–${endLabel}`;
+            });
+
+            return `Melhores horários (Delta T 2–8°C) nas próximas 48h: ${formatted.join(', ')}.`;
         }
 
         // PDF (mantido como estava no seu código)
@@ -1194,6 +1334,18 @@
                 doc.addImage(imgClima, 'PNG', 155, y + 5, 130, 110);
             }
 
+            const alertY = y + 5 + 110 + 2;
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'bold');
+            doc.text('ALERTA DE MELHORES HORÁRIOS PARA APLICAÇÃO', 15, alertY);
+            doc.setFontSize(8);
+            doc.setFont(undefined, 'normal');
+            const windowMessage = buildBestApplicationWindows(climateData?.deltaT, climateData?.labels);
+            doc.text(windowMessage, 15, alertY + 5, { maxWidth: 260 });
+            const windMessage = buildWindSummary(climateData?.winds);
+            doc.text(`Ventos: ${windMessage}`, 15, alertY + 10, { maxWidth: 260 });
+            doc.text('Referência técnica: Delta T ideal entre 2–8°C; 8–10°C exige cautela; >10°C evitar; <2°C risco de inversão térmica.', 15, alertY + 15, { maxWidth: 260 });
+
             doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('✅ PDF completo gerado com sucesso!', 'success');
         };
@@ -1204,16 +1356,26 @@
             charts.forEach(c => c.destroy());
             charts = [];
 
-            const hours = climateData?.labels || Array.from({length: 24}, (_, i) => `${String(i).padStart(2, '0')}h`);
+            const hours = climateData?.labels || Array.from({length: 48}, (_, i) => {
+                const dayOffset = Math.floor(i / 24);
+                const hour = String(i % 24).padStart(2, '0');
+                return `${dayOffset + 1}º dia ${hour}:00`;
+            });
             const deltaSeries = climateData?.deltaT || [
+                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2,
                 2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
                 3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
             ];
             const temperatureSeries = climateData?.temperatures || [
                 20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
+                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20,
+                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
                 32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20
             ];
             const humiditySeries = climateData?.humidity || [
+                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
+                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85,
                 85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
                 46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
             ];
@@ -1338,35 +1500,66 @@
             return Number((temperature - dewPoint).toFixed(2));
         }
 
-        async function fetchClimateData(latitude, longitude) {
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m&forecast_days=1&timezone=auto`;
+        function formatDateISO(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        async function fetchOpenMeteoData(latitude, longitude, startDate, endDate) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m,windspeed_10m&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}&timezone=auto`;
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error('Falha ao obter dados meteorológicos.');
             }
+            const data = await response.json();
+            data.source = 'open-meteo';
+            return data;
+        }
+
+        async function fetchInmetData(latitude, longitude, startDate, endDate) {
+            const url = `/api/inmet?lat=${latitude}&lon=${longitude}&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('Falha ao obter dados do INMET.');
+            }
             return response.json();
         }
 
-        function buildClimateSeries(data) {
+        async function fetchClimateData(latitude, longitude, startDate, endDate) {
+            try {
+                return await fetchInmetData(latitude, longitude, startDate, endDate);
+            } catch (error) {
+                console.warn('INMET indisponível, usando Open-Meteo como fallback.', error);
+                return fetchOpenMeteoData(latitude, longitude, startDate, endDate);
+            }
+        }
+
+        function buildClimateSeries(data, startDate) {
             const times = data?.hourly?.time || [];
             const temps = data?.hourly?.temperature_2m || [];
             const humidity = data?.hourly?.relativehumidity_2m || [];
+            const winds = data?.hourly?.windspeed_10m || [];
             if (!times.length) return null;
 
-            const now = new Date();
-            const startIndex = Math.max(times.findIndex(t => new Date(t) >= now), 0);
-            const sliceTimes = times.slice(startIndex, startIndex + 24);
-            const sliceTemps = temps.slice(startIndex, startIndex + 24);
-            const sliceHumidity = humidity.slice(startIndex, startIndex + 24);
+            const start = startDate ?? new Date();
+            const end = new Date(start);
+            end.setDate(end.getDate() + 2);
+            const startIndex = Math.max(times.findIndex(t => new Date(t) >= start), 0);
+            const endIndex = Math.max(times.findIndex(t => new Date(t) >= end), startIndex + 48);
+            const sliceTimes = times.slice(startIndex, endIndex);
+            const sliceTemps = temps.slice(startIndex, endIndex);
+            const sliceHumidity = humidity.slice(startIndex, endIndex);
+            const sliceWinds = winds.slice(startIndex, endIndex);
 
-            const labels = sliceTimes.map(time => new Date(time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+            const labels = sliceTimes.map(time => new Date(time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
             const deltaT = sliceTemps.map((temp, idx) => computeDeltaT(temp, sliceHumidity[idx] ?? 50));
 
             return {
                 labels,
                 temperatures: sliceTemps,
                 humidity: sliceHumidity,
-                deltaT
+                winds: sliceWinds,
+                deltaT,
+                source: data?.source || 'inmet'
             };
         }
 
@@ -1375,6 +1568,10 @@
             const lonField = document.getElementById('clima_lon');
             const latitude = parseFloat(latField.value);
             const longitude = parseFloat(lonField.value);
+            const applicationDateValue = document.getElementById('id_data').value;
+            const applicationDate = applicationDateValue ? new Date(`${applicationDateValue}T00:00:00`) : new Date();
+            const endDate = new Date(applicationDate);
+            endDate.setDate(endDate.getDate() + 1);
 
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
                 showToast('❌ Informe latitude e longitude válidas.', 'error');
@@ -1383,8 +1580,8 @@
 
             try {
                 showToast('⏳ Buscando dados meteorológicos...', 'success');
-                const data = await fetchClimateData(latitude, longitude);
-                const series = buildClimateSeries(data);
+                const data = await fetchClimateData(latitude, longitude, applicationDate, endDate);
+                const series = buildClimateSeries(data, applicationDate);
                 if (!series) {
                     showToast('❌ Dados meteorológicos indisponíveis.', 'error');
                     return;
@@ -1392,7 +1589,10 @@
                 climateData = series;
                 initCharts();
                 checkClimateConditions(series.deltaT);
-                showToast('✅ Clima atualizado com sucesso!', 'success');
+                const sourceMessage = series.source === 'inmet'
+                    ? '✅ Clima atualizado com INMET.'
+                    : '⚠️ INMET indisponível. Dados carregados via Open-Meteo.';
+                showToast(sourceMessage, series.source === 'inmet' ? 'success' : 'error');
             } catch (error) {
                 console.error(error);
                 showToast('❌ Erro ao atualizar clima. Tente novamente.', 'error');
