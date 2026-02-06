@@ -33,8 +33,10 @@
     console.log('📧 Para criar conta admin use: bitencourttec@gmail.com');
 
 // Objeto API mock para não quebrar código legado
-    window.API = {};
-    window.API_BASE = '';
+    window.API = window.API || {};
+    if (typeof window.API_BASE === 'undefined') {
+        window.API_BASE = '';
+    }
 
 // VERSÃO COM API - BACKEND NODE.JS + SQLITE
         // A configuração da API está em api-config.js
@@ -187,6 +189,63 @@
             setTimeout(() => { document.getElementById('p_dose').focus(); }, 100);
         };
 
+        function getApiBase() {
+            return window.API_BASE || '';
+        }
+
+        async function fetchJson(url, options = {}) {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                throw new Error(`Erro ao acessar ${url}: ${response.status}`);
+            }
+            return response.json();
+        }
+
+        async function loadHistoryFromServer() {
+            const base = getApiBase();
+            const uidParam = !isUserAdmin && currentUserData ? `?uid=${encodeURIComponent(currentUserData.uid)}` : '';
+            const url = `${base}/api/simulacoes${uidParam}`;
+            return fetchJson(url);
+        }
+
+        async function loadHistoryFromFirebase() {
+            if (!currentUserData) {
+                return [];
+            }
+
+            if (isUserAdmin) {
+                const histRef = db.ref('simulacoes');
+                const snapshot = await histRef.once('value');
+                const data = snapshot.val() || {};
+                const allItems = [];
+
+                Object.entries(data).forEach(([uid, sims]) => {
+                    if (!sims) return;
+                    Object.entries(sims).forEach(([id, sim]) => {
+                        allItems.push({
+                            id,
+                            uid,
+                            ...sim
+                        });
+                    });
+                });
+
+                console.log(`✅ ${allItems.length} simulações carregadas (modo admin)`);
+                return allItems;
+            }
+
+            const histRef = db.ref('simulacoes/' + currentUserData.uid);
+            const snapshot = await histRef.once('value');
+            const data = snapshot.val() || {};
+            const items = Object.keys(data).map(key => ({
+                id: key,
+                uid: currentUserData.uid,
+                ...data[key]
+            }));
+            console.log(`✅ ${items.length} simulações carregadas do Firebase`);
+            return items;
+        }
+
         async function loadHistory() {
             try {
                 if (!currentUserData) {
@@ -195,35 +254,12 @@
                     return;
                 }
 
-                if (isUserAdmin) {
-                    const histRef = db.ref('simulacoes');
-                    const snapshot = await histRef.once('value');
-                    const data = snapshot.val() || {};
-                    const allItems = [];
-
-                    Object.entries(data).forEach(([uid, sims]) => {
-                        if (!sims) return;
-                        Object.entries(sims).forEach(([id, sim]) => {
-                            allItems.push({
-                                id,
-                                uid,
-                                ...sim
-                            });
-                        });
-                    });
-
-                    historicalData = allItems;
-                    console.log(`✅ ${historicalData.length} simulações carregadas (modo admin)`);
-                } else {
-                    const histRef = db.ref('simulacoes/' + currentUserData.uid);
-                    const snapshot = await histRef.once('value');
-                    const data = snapshot.val() || {};
-                    historicalData = Object.keys(data).map(key => ({
-                        id: key,
-                        uid: currentUserData.uid,
-                        ...data[key]
-                    }));
-                    console.log(`✅ ${historicalData.length} simulações carregadas do Firebase`);
+                try {
+                    historicalData = await loadHistoryFromServer();
+                    console.log(`✅ ${historicalData.length} simulações carregadas do servidor`);
+                } catch (error) {
+                    console.warn('⚠️ Falha ao carregar histórico do servidor, usando Firebase.', error);
+                    historicalData = await loadHistoryFromFirebase();
                 }
 
                 renderHistoryList(historicalData);
@@ -309,6 +345,48 @@
             return true;
         }
 
+        function syncProductObservationsFromDom() {
+            const inputs = document.querySelectorAll('.observacao-input');
+            if (!inputs.length) return;
+
+            inputs.forEach(input => {
+                const productId = input.dataset.productId;
+                const product = products.find(p => String(p.id) === String(productId));
+                if (product) {
+                    product.observacao = input.value;
+                }
+            });
+        }
+
+        async function saveSimulationToServer(payload) {
+            const base = getApiBase();
+            const now = new Date().toISOString();
+            const editingAllowed = currentEditingSimulation && currentEditingSimulation.source === 'server';
+            const body = {
+                ...payload,
+                uid: currentUserData?.uid || null,
+                userEmail: currentUserData?.email || '',
+                updatedAt: now,
+                createdAt: editingAllowed ? currentEditingSimulation.createdAt || now : now
+            };
+
+            if (editingAllowed && currentEditingSimulation?.id) {
+                const url = `${base}/api/simulacoes/${currentEditingSimulation.id}`;
+                return fetchJson(url, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+            }
+
+            const url = `${base}/api/simulacoes`;
+            return fetchJson(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+        }
+
         window.saveSimulation = async () => {
             if (!validateRequiredField('id_cliente', '❌ Preencha o nome do cliente')) {
                 return;
@@ -333,6 +411,8 @@
                 showToast('❌ Adicione pelo menos um produto', 'error');
                 return;
             }
+
+            syncProductObservationsFromDom();
 
             const btn = document.getElementById('btn-save-cloud');
             btn.disabled = true;
@@ -362,7 +442,6 @@
             };
 
             try {
-                // Salvar no Firebase
                 if (!currentUserData) {
                     showToast('❌ Você precisa estar logado!', 'error');
                     btn.disabled = false;
@@ -370,25 +449,36 @@
                     return;
                 }
 
-                const now = new Date().toISOString();
-                const editingAllowed = currentEditingSimulation && (isUserAdmin || currentEditingSimulation.uid === currentUserData.uid);
-                const targetUid = editingAllowed ? currentEditingSimulation.uid : currentUserData.uid;
-                const targetRef = db.ref(`simulacoes/${targetUid}`);
-
-                if (editingAllowed && currentEditingSimulation?.id) {
-                    await targetRef.child(currentEditingSimulation.id).update({
-                        ...payload,
-                        userEmail: currentEditingSimulation.userEmail || currentUserData.email,
-                        updatedAt: now,
-                        createdAt: currentEditingSimulation.createdAt || now
-                    });
+                let savedOnServer = false;
+                try {
+                    await saveSimulationToServer(payload);
+                    savedOnServer = true;
                     currentEditingSimulation = null;
-                } else {
-                    await targetRef.push({
-                        ...payload,
-                        userEmail: currentUserData.email,
-                        createdAt: now
-                    });
+                } catch (error) {
+                    console.warn('⚠️ Falha ao salvar no servidor, tentando Firebase.', error);
+                }
+
+                if (!savedOnServer) {
+                    const now = new Date().toISOString();
+                    const editingAllowed = currentEditingSimulation && (isUserAdmin || currentEditingSimulation.uid === currentUserData.uid);
+                    const targetUid = editingAllowed ? currentEditingSimulation.uid : currentUserData.uid;
+                    const targetRef = db.ref(`simulacoes/${targetUid}`);
+
+                    if (editingAllowed && currentEditingSimulation?.id) {
+                        await targetRef.child(currentEditingSimulation.id).update({
+                            ...payload,
+                            userEmail: currentEditingSimulation.userEmail || currentUserData.email,
+                            updatedAt: now,
+                            createdAt: currentEditingSimulation.createdAt || now
+                        });
+                        currentEditingSimulation = null;
+                    } else {
+                        await targetRef.push({
+                            ...payload,
+                            userEmail: currentUserData.email,
+                            createdAt: now
+                        });
+                    }
                 }
 
                 showToast('✅ Simulação salva com sucesso!', 'success');
@@ -472,18 +562,36 @@
             renderHistoryList(filtered);
         };
 
+        async function fetchSimulationFromServer(id, uidOverride = '') {
+            const base = getApiBase();
+            const uidParam = uidOverride ? `?uid=${encodeURIComponent(uidOverride)}` : '';
+            const url = `${base}/api/simulacoes/${id}${uidParam}`;
+            return fetchJson(url);
+        }
+
         window.viewSimulation = async (id, uidOverride = '') => {
             try {
-                // Buscar do Firebase
                 if (!currentUserData) {
                     showToast('❌ Você precisa estar logado!', 'error');
                     return;
                 }
 
                 const ownerUid = uidOverride || currentUserData.uid;
-                const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
-                const snapshot = await simRef.once('value');
-                const item = snapshot.val();
+                let item = null;
+                let loadedFromServer = false;
+
+                try {
+                    item = await fetchSimulationFromServer(id, ownerUid);
+                    loadedFromServer = true;
+                } catch (error) {
+                    console.warn('⚠️ Falha ao carregar simulação do servidor, usando Firebase.', error);
+                }
+
+                if (!item) {
+                    const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
+                    const snapshot = await simRef.once('value');
+                    item = snapshot.val();
+                }
 
                 if (!item) {
                     showToast('❌ Simulação não encontrada', 'error');
@@ -517,14 +625,16 @@
                     dose: p.dose,
                     formulacao: p.formulacao,
                     tipo: p.tipo,
-                    ph: p.ph
+                    ph: p.ph,
+                    observacao: p.observacao || p.observacoes || ''
                 }));
 
                 currentEditingSimulation = {
                     id,
                     uid: ownerUid,
                     userEmail: item.userEmail || '',
-                    createdAt: item.createdAt || ''
+                    createdAt: item.createdAt || '',
+                    source: loadedFromServer ? 'server' : 'firebase'
                 };
 
                 renderProductList();
@@ -778,7 +888,7 @@
                                         class="observacao-input"
                                         placeholder="Observações do produto..."
                                         data-product-id="${p.id}"
-                                        onchange="updateProductObservation('${p.id}', this.value)"
+                                        oninput="updateProductObservation('${p.id}', this.value)"
                                     >${observacao}</textarea>
                                 </div>
                             </div>
@@ -876,6 +986,7 @@
 
         // PDF (mantido como estava no seu código)
         window.generatePDF = () => {
+            syncProductObservationsFromDom();
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
 
