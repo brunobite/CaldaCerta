@@ -1106,7 +1106,8 @@
             deltaTValues.forEach((deltaT, index) => {
                 const wind = winds[index] ?? 0;
                 const isIdeal = deltaT >= 2 && deltaT <= 8 && wind >= 3 && wind <= 10;
-                const isCaution = !isIdeal && (
+                const isAvoid = deltaT > 10 || deltaT < 2 || wind >= 15;
+                const isCaution = !isIdeal && !isAvoid && (
                     (deltaT > 8 && deltaT <= 10) ||
                     (wind > 10 && wind < 15) ||
                     wind < 3
