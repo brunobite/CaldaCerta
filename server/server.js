@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs').promises;
+const https = require('https');
 const path = require('path');
 const app = express();
 
@@ -27,6 +28,46 @@ function generateId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function fetchJson(url) {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`HTTP ${res.statusCode}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(data));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      })
+      .on('error', reject);
+  });
+}
+
+function buildInmetTimestamp(dateStr, hourStr) {
+  const hour = String(hourStr || '0000').padStart(4, '0');
+  const formattedHour = `${hour.slice(0, 2)}:${hour.slice(2, 4)}`;
+  return `${dateStr}T${formattedHour}:00`;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function formatDateISO(date) {
+  return date.toISOString().split('T')[0];
+}
+
 // 🔧 CONFIGURAÇÃO PARA SERVIR O FRONTEND DA PASTA 'web/'
 
 // 1. Servir arquivos estáticos da pasta 'web'
@@ -43,6 +84,88 @@ app.get('*', (req, res) => {
 // 🔧 API endpoints (se houver)
 app.get('/api/status', (req, res) => {
   res.json({ status: 'OK', message: 'CaldaCerta Pro Online' });
+});
+
+app.get('/api/inmet', async (req, res) => {
+  try {
+    const { lat, lon, start_date, end_date } = req.query;
+    if (!lat || !lon || !start_date || !end_date) {
+      res.status(400).json({ error: 'Parâmetros lat, lon, start_date, end_date são obrigatórios.' });
+      return;
+    }
+
+    const stationsUrl = `https://apitempo.inmet.gov.br/estacao/proximas/${lat}/${lon}`;
+    const stations = await fetchJson(stationsUrl);
+    const station = Array.isArray(stations) ? stations[0] : null;
+    const stationCode = station?.CD_ESTACAO || station?.cd_estacao;
+    if (!stationCode) {
+      res.status(404).json({ error: 'Nenhuma estação INMET encontrada.' });
+      return;
+    }
+
+    const startDate = new Date(start_date);
+    const endDate = new Date(end_date);
+    const days = [];
+    for (let day = new Date(startDate); day <= endDate; day = addDays(day, 1)) {
+      days.push(formatDateISO(day));
+    }
+
+    const responses = await Promise.all(
+      days.map((day) => fetchJson(`https://apitempo.inmet.gov.br/estacao/dados/${day}/${stationCode}`))
+    );
+    const records = responses.flat().filter(Boolean);
+    const sorted = records.sort((a, b) => {
+      const aTime = buildInmetTimestamp(a.DT_MEDICAO || a.dt_medicao, a.HR_MEDICAO || a.hr_medicao);
+      const bTime = buildInmetTimestamp(b.DT_MEDICAO || b.dt_medicao, b.HR_MEDICAO || b.hr_medicao);
+      return new Date(aTime) - new Date(bTime);
+    });
+
+    const time = [];
+    const temperature = [];
+    const humidity = [];
+    const windspeed = [];
+    const precipitation = [];
+
+    sorted.forEach((item) => {
+      const dateStr = item.DT_MEDICAO || item.dt_medicao;
+      const hourStr = item.HR_MEDICAO || item.hr_medicao;
+      if (!dateStr || !hourStr) return;
+
+      time.push(buildInmetTimestamp(dateStr, hourStr));
+      temperature.push(Number(item.TEM_INS || item.tem_ins || item.TEMPERATURA || item.temperatura || 0));
+      humidity.push(Number(item.UMD_INS || item.umd_ins || item.UMIDADE || item.umidade || 0));
+
+      const windValue = Number(item.VEN_VEL || item.ven_vel || item.VENTO || item.vento || 0);
+      windspeed.push(Number.isFinite(windValue) ? windValue * 3.6 : 0);
+      const rainValue = Number(
+        item.CHUVA ||
+        item.chuva ||
+        item.PREC ||
+        item.prec ||
+        item.PRECIPITACAO ||
+        item.precipitacao ||
+        0
+      );
+      precipitation.push(Number.isFinite(rainValue) ? rainValue : 0);
+    });
+
+    const hourly = {
+      time,
+      temperature_2m: temperature,
+      relativehumidity_2m: humidity,
+      windspeed_10m: windspeed,
+      precipitation,
+    };
+
+    res.json({
+      source: 'inmet',
+      station: stationCode,
+      hourly,
+    });
+  } catch (error) {
+    console.error('Erro ao consultar INMET:', error);
+    res.status(502).json({ error: 'Falha ao consultar INMET.' });
+  }
 });
 
 app.get('/api/simulacoes', async (req, res) => {

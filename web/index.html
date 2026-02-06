@@ -366,7 +366,7 @@
                             </div>
                         </div>
                     </div>
-                    <p class="text-xs text-slate-500 mt-2">Dados fornecidos por Open-Meteo (sem chave). Atualize para recalcular Delta T.</p>
+                    <p class="text-xs text-slate-500 mt-2">Dados preferenciais do INMET com fallback para Open-Meteo. Atualize para recalcular Delta T.</p>
                 </div>
                 <h3 class="font-bold text-lg mb-4 text-slate-700">
                     <i class="fa-solid fa-chart-line text-teal-600 mr-2"></i>
@@ -376,7 +376,17 @@
                     <canvas id="chartDeltaT" height="200"></canvas>
                 </div>
 
-                <div id="alert-container" class="mb-6"></div>
+                <div class="data-table-wrapper">
+                    <table class="data-table" id="delta-table">
+                        <thead>
+                            <tr>
+                                <th>Hora</th>
+                                <th>Delta T (°C)</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
 
                 <h3 class="font-bold text-lg mb-4 text-slate-700">
                     <i class="fa-solid fa-temperature-high mr-2" style="color: #f59e0b;"></i>
@@ -384,6 +394,20 @@
                 </h3>
                 <div class="chart-container">
                     <canvas id="chartClima" height="200"></canvas>
+                </div>
+                <div class="data-table-wrapper">
+                    <table class="data-table" id="clima-table">
+                        <thead>
+                            <tr>
+                                <th>Hora</th>
+                                <th>Temp (°C)</th>
+                                <th>Umid (%)</th>
+                                <th>Vento (km/h)</th>
+                                <th>Chuva (mm)</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
         </section>
