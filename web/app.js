@@ -1090,7 +1090,6 @@
         }
 
         function buildApplicationReport(deltaTValues, windValues, precipitationValues, labels) {
-        function buildApplicationReport(deltaTValues, windValues, labels) {
             if (!deltaTValues?.length || !labels?.length) {
                 return {
                     ideal: 'Sem dados suficientes para horários ideais.',
@@ -1110,8 +1109,6 @@
                 const rain = precipitation[index] ?? 0;
                 const isIdeal = deltaT >= 2 && deltaT <= 8 && wind >= 3 && wind <= 10;
                 const isAvoid = deltaT > 10 || deltaT < 2 || wind >= 15 || rain > 0;
-                const isIdeal = deltaT >= 2 && deltaT <= 8 && wind >= 3 && wind <= 10;
-                const isAvoid = deltaT > 10 || deltaT < 2 || wind >= 15;
                 const isCaution = !isIdeal && !isAvoid && (
                     (deltaT > 8 && deltaT <= 10) ||
                     (wind > 10 && wind < 15) ||
@@ -1401,7 +1398,6 @@
             }
 
             const alertY = climaY + chartHeight + 12;
-            const alertY = y + 5 + 110 + 2;
             doc.setFontSize(10);
             doc.setFont(undefined, 'bold');
             doc.text('ALERTA DE MELHORES HORÁRIOS PARA APLICAÇÃO', 15, alertY);
@@ -1460,16 +1456,6 @@
                 bodyStyles: { fontSize: 8 },
                 margin: { left: 10, right: 10 }
             });
-            doc.text(windowMessage, 15, alertY + 5, { maxWidth: 260 });
-            const windMessage = buildWindSummary(climateData?.winds);
-            doc.text(`Ventos: ${windMessage}`, 15, alertY + 10, { maxWidth: 260 });
-            doc.text('Referência técnica: Delta T ideal entre 2–8°C; 8–10°C exige cautela; >10°C evitar; <2°C risco de inversão térmica.', 15, alertY + 15, { maxWidth: 260 });
-            const report = buildApplicationReport(climateData?.deltaT, climateData?.winds, climateData?.labels);
-            doc.setFont(undefined, 'bold');
-            doc.text('RELATÓRIO TÉCNICO', 15, alertY + 20);
-            doc.setFont(undefined, 'normal');
-            doc.text(report.ideal, 15, alertY + 25, { maxWidth: 260 });
-            doc.text(report.caution, 15, alertY + 30, { maxWidth: 260 });
 
             doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('✅ PDF completo gerado com sucesso!', 'success');
@@ -1728,7 +1714,6 @@
 
         async function fetchOpenMeteoData(latitude, longitude, startDate, endDate) {
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m,windspeed_10m,precipitation&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}&timezone=auto`;
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m,windspeed_10m&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}&timezone=auto`;
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error('Falha ao obter dados meteorológicos.');
