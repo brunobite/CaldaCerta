@@ -668,7 +668,7 @@
 
             if (steps[currentStepIdx] === '2-4') {
                 initCharts();
-                checkClimateConditions(climateData?.deltaT);
+                renderClimateTables();
             }
             if (steps[currentStepIdx] === '2-6') {
                 const btnSave = document.getElementById('btn-save-cloud');
@@ -1089,6 +1089,7 @@
             return 'Ventos entre 3–10 km/h. Condições favoráveis para aplicação.';
         }
 
+        function buildApplicationReport(deltaTValues, windValues, precipitationValues, labels) {
         function buildApplicationReport(deltaTValues, windValues, labels) {
             if (!deltaTValues?.length || !labels?.length) {
                 return {
@@ -1098,6 +1099,7 @@
             }
 
             const winds = windValues?.length ? windValues : Array(deltaTValues.length).fill(6);
+            const precipitation = precipitationValues?.length ? precipitationValues : Array(deltaTValues.length).fill(0);
             const idealRanges = [];
             const cautionRanges = [];
             let idealStart = null;
@@ -1105,6 +1107,9 @@
 
             deltaTValues.forEach((deltaT, index) => {
                 const wind = winds[index] ?? 0;
+                const rain = precipitation[index] ?? 0;
+                const isIdeal = deltaT >= 2 && deltaT <= 8 && wind >= 3 && wind <= 10;
+                const isAvoid = deltaT > 10 || deltaT < 2 || wind >= 15 || rain > 0;
                 const isIdeal = deltaT >= 2 && deltaT <= 8 && wind >= 3 && wind <= 10;
                 const isAvoid = deltaT > 10 || deltaT < 2 || wind >= 15;
                 const isCaution = !isIdeal && !isAvoid && (
@@ -1301,12 +1306,12 @@
                 theme: 'grid',
                 headStyles: {
                     fillColor: [15, 118, 110],
-                    fontSize: 8,
+                    fontSize: 9,
                     fontStyle: 'bold',
                     halign: 'center',
                     valign: 'middle'
                 },
-                bodyStyles: { fontSize: 7, valign: 'middle' },
+                bodyStyles: { fontSize: 8, valign: 'middle' },
                 columnStyles: {
                     0: { cellWidth: 10, halign: 'center' },
                     1: { cellWidth: 65 },
@@ -1341,14 +1346,15 @@
                 }
             });
 
-            doc.addPage('landscape');
+            doc.addPage('portrait');
+            const pageWidth = doc.internal.pageSize.getWidth();
             doc.setFillColor(15, 118, 110);
-            doc.rect(0, 0, 297, 25, 'F');
+            doc.rect(0, 0, pageWidth, 20, 'F');
 
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(18);
+            doc.setFontSize(16);
             doc.setFont(undefined, 'bold');
-            doc.text('QUALIDADE DA ÁGUA E CONDIÇÕES CLIMÁTICAS', 148.5, 15, { align: 'center' });
+            doc.text('QUALIDADE DA ÁGUA E CONDIÇÕES CLIMÁTICAS', pageWidth / 2, 12, { align: 'center' });
 
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(12);
@@ -1373,24 +1379,28 @@
             y += 6;
             doc.text(`pH na calda: ${caldaPh}`, 15, y);
 
-            y += 15;
+            y += 12;
             doc.setFontSize(11);
             doc.setFont(undefined, 'bold');
 
             doc.text('2. GRÁFICO DELTA T', 15, y);
             const chartDeltaT = document.getElementById('chartDeltaT');
+            const chartWidth = pageWidth - 30;
+            const chartHeight = 70;
             if (chartDeltaT) {
                 const imgDeltaT = chartDeltaT.toDataURL('image/png');
-                doc.addImage(imgDeltaT, 'PNG', 15, y + 5, 130, 110);
+                doc.addImage(imgDeltaT, 'PNG', 15, y + 5, chartWidth, chartHeight);
             }
 
-            doc.text('3. CONDIÇÕES METEOROLÓGICAS', 155, y);
+            const climaY = y + chartHeight + 18;
+            doc.text('3. CONDIÇÕES METEOROLÓGICAS', 15, climaY);
             const chartClima = document.getElementById('chartClima');
             if (chartClima) {
                 const imgClima = chartClima.toDataURL('image/png');
-                doc.addImage(imgClima, 'PNG', 155, y + 5, 130, 110);
+                doc.addImage(imgClima, 'PNG', 15, climaY + 5, chartWidth, chartHeight);
             }
 
+            const alertY = climaY + chartHeight + 12;
             const alertY = y + 5 + 110 + 2;
             doc.setFontSize(10);
             doc.setFont(undefined, 'bold');
@@ -1398,6 +1408,58 @@
             doc.setFontSize(8);
             doc.setFont(undefined, 'normal');
             const windowMessage = buildBestApplicationWindows(climateData?.deltaT, climateData?.labels);
+            const textWidth = pageWidth - 30;
+            doc.text(windowMessage, 15, alertY + 5, { maxWidth: textWidth });
+            const windMessage = buildWindSummary(climateData?.winds);
+            doc.text(`Ventos: ${windMessage}`, 15, alertY + 10, { maxWidth: textWidth });
+            doc.text('Referência técnica: Delta T ideal entre 2–8°C; 8–10°C exige cautela; >10°C evitar; <2°C risco de inversão térmica.', 15, alertY + 15, { maxWidth: textWidth });
+            const report = buildApplicationReport(climateData?.deltaT, climateData?.winds, climateData?.precipitation, climateData?.labels);
+            doc.setFont(undefined, 'bold');
+            doc.text('RELATÓRIO TÉCNICO', 15, alertY + 20);
+            doc.setFont(undefined, 'normal');
+            doc.text(report.ideal, 15, alertY + 25, { maxWidth: textWidth });
+            doc.text(report.caution, 15, alertY + 30, { maxWidth: textWidth });
+
+            doc.addPage('portrait');
+            const tablePageWidth = doc.internal.pageSize.getWidth();
+            doc.setFillColor(15, 118, 110);
+            doc.rect(0, 0, tablePageWidth, 20, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('TABELA CLIMÁTICA (48H)', tablePageWidth / 2, 12, { align: 'center' });
+
+            const tableHours = climateData?.labels || Array.from({length: 48}, (_, i) => {
+                const dayOffset = Math.floor(i / 24);
+                const hour = String(i % 24).padStart(2, '0');
+                return `${dayOffset + 1}º dia ${hour}:00`;
+            });
+            const tableDelta = climateData?.deltaT || Array.from({ length: 48 }, () => 0);
+            const tableTemp = climateData?.temperatures || Array.from({ length: 48 }, () => 0);
+            const tableHumidity = climateData?.humidity || Array.from({ length: 48 }, () => 0);
+            const tableWind = climateData?.winds || Array.from({ length: 48 }, () => 0);
+            const tablePrecip = climateData?.precipitation || Array.from({ length: 48 }, () => 0);
+
+            const climateRows = tableHours.map((label, idx) => ([
+                label,
+                Number(tableDelta[idx] ?? 0).toFixed(2),
+                Number(tableTemp[idx] ?? 0).toFixed(1),
+                Number(tableHumidity[idx] ?? 0).toFixed(0),
+                Number(tableWind[idx] ?? 0).toFixed(1),
+                Number(tablePrecip[idx] ?? 0).toFixed(1)
+            ]));
+
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(9);
+            doc.autoTable({
+                startY: 28,
+                head: [['Hora', 'Delta T', 'Temp (°C)', 'Umid (%)', 'Vento (km/h)', 'Chuva (mm)']],
+                body: climateRows,
+                theme: 'grid',
+                headStyles: { fillColor: [15, 118, 110], fontSize: 9, fontStyle: 'bold', textColor: [255, 255, 255] },
+                bodyStyles: { fontSize: 8 },
+                margin: { left: 10, right: 10 }
+            });
             doc.text(windowMessage, 15, alertY + 5, { maxWidth: 260 });
             const windMessage = buildWindSummary(climateData?.winds);
             doc.text(`Ventos: ${windMessage}`, 15, alertY + 10, { maxWidth: 260 });
@@ -1442,6 +1504,13 @@
                 85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
                 46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
             ];
+            const windSeries = climateData?.winds || [
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
+            ];
+            const precipSeries = climateData?.precipitation || Array.from({ length: 48 }, () => 0);
 
             const chartDeltaT = new Chart(document.getElementById('chartDeltaT'), {
                 type: 'line',
@@ -1591,6 +1660,60 @@
             charts.push(chartDeltaT, chartClima);
         }
 
+        function renderClimateTables() {
+            const deltaTable = document.querySelector('#delta-table tbody');
+            const climaTable = document.querySelector('#clima-table tbody');
+            if (!deltaTable || !climaTable) return;
+
+            const hours = climateData?.labels || Array.from({length: 48}, (_, i) => {
+                const dayOffset = Math.floor(i / 24);
+                const hour = String(i % 24).padStart(2, '0');
+                return `${dayOffset + 1}º dia ${hour}:00`;
+            });
+            const deltaSeries = climateData?.deltaT || [
+                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2,
+                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
+            ];
+            const temperatureSeries = climateData?.temperatures || [
+                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
+                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20,
+                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
+                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20
+            ];
+            const humiditySeries = climateData?.humidity || [
+                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
+                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85,
+                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
+                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
+            ];
+            const windSeries = climateData?.winds || [
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
+                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
+                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
+            ];
+            const precipSeries = climateData?.precipitation || Array.from({ length: 48 }, () => 0);
+
+            deltaTable.innerHTML = hours.map((label, idx) => `
+                <tr>
+                    <td>${label}</td>
+                    <td>${Number(deltaSeries[idx] ?? 0).toFixed(2)}</td>
+                </tr>
+            `).join('');
+
+            climaTable.innerHTML = hours.map((label, idx) => `
+                <tr>
+                    <td>${label}</td>
+                    <td>${Number(temperatureSeries[idx] ?? 0).toFixed(1)}</td>
+                    <td>${Number(humiditySeries[idx] ?? 0).toFixed(0)}</td>
+                    <td>${Number(windSeries[idx] ?? 0).toFixed(1)}</td>
+                    <td>${Number(precipSeries[idx] ?? 0).toFixed(1)}</td>
+                </tr>
+            `).join('');
+        }
+
         function computeDeltaT(temperature, humidity) {
             const a = 17.27;
             const b = 237.7;
@@ -1604,6 +1727,7 @@
         }
 
         async function fetchOpenMeteoData(latitude, longitude, startDate, endDate) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m,windspeed_10m,precipitation&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}&timezone=auto`;
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m,windspeed_10m&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}&timezone=auto`;
             const response = await fetch(url);
             if (!response.ok) {
@@ -1637,6 +1761,7 @@
             const temps = data?.hourly?.temperature_2m || [];
             const humidity = data?.hourly?.relativehumidity_2m || [];
             const winds = data?.hourly?.windspeed_10m || [];
+            const precipitation = data?.hourly?.precipitation || [];
             if (!times.length) return null;
 
             const start = startDate ?? new Date();
@@ -1648,6 +1773,7 @@
             const sliceTemps = temps.slice(startIndex, endIndex);
             const sliceHumidity = humidity.slice(startIndex, endIndex);
             const sliceWinds = winds.slice(startIndex, endIndex);
+            const slicePrecip = precipitation.slice(startIndex, endIndex);
 
             const labels = sliceTimes.map(time => new Date(time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
             const deltaT = sliceTemps.map((temp, idx) => computeDeltaT(temp, sliceHumidity[idx] ?? 50));
@@ -1657,6 +1783,7 @@
                 temperatures: sliceTemps,
                 humidity: sliceHumidity,
                 winds: sliceWinds,
+                precipitation: slicePrecip,
                 deltaT,
                 source: data?.source || 'inmet'
             };
@@ -1687,6 +1814,7 @@
                 }
                 climateData = series;
                 initCharts();
+                renderClimateTables();
                 checkClimateConditions(series.deltaT);
                 const sourceMessage = series.source === 'inmet'
                     ? '✅ Clima atualizado com INMET.'

@@ -124,6 +124,7 @@ app.get('/api/inmet', async (req, res) => {
     const temperature = [];
     const humidity = [];
     const windspeed = [];
+    const precipitation = [];
 
     sorted.forEach((item) => {
       const dateStr = item.DT_MEDICAO || item.dt_medicao;
@@ -136,6 +137,16 @@ app.get('/api/inmet', async (req, res) => {
 
       const windValue = Number(item.VEN_VEL || item.ven_vel || item.VENTO || item.vento || 0);
       windspeed.push(Number.isFinite(windValue) ? windValue * 3.6 : 0);
+      const rainValue = Number(
+        item.CHUVA ||
+        item.chuva ||
+        item.PREC ||
+        item.prec ||
+        item.PRECIPITACAO ||
+        item.precipitacao ||
+        0
+      );
+      precipitation.push(Number.isFinite(rainValue) ? rainValue : 0);
     });
 
     res.json({
@@ -145,6 +156,8 @@ app.get('/api/inmet', async (req, res) => {
         time,
         temperature_2m: temperature,
         relativehumidity_2m: humidity,
+        windspeed_10m: windspeed,
+        precipitation
         windspeed_10m: windspeed
       }
     });
