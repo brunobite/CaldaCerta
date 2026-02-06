@@ -1148,6 +1148,8 @@
             };
         }
 
+        const CLIMATE_HOURS = 24;
+
         function buildBestApplicationWindows(deltaTValues, labels) {
             if (!deltaTValues?.length || !labels?.length) {
                 return 'Sem dados de Delta T para estimar horários.';
@@ -1174,7 +1176,7 @@
             }
 
             if (!ranges.length) {
-                return 'Nenhum horário com Delta T entre 2–8°C nas próximas 48h.';
+                return `Nenhum horário com Delta T entre 2–8°C nas próximas ${CLIMATE_HOURS}h.`;
             }
 
             const formatted = ranges.map(([start, end]) => {
@@ -1183,7 +1185,7 @@
                 return start === end ? startLabel : `${startLabel}–${endLabel}`;
             });
 
-            return `Melhores horários (Delta T 2–8°C) nas próximas 48h: ${formatted.join(', ')}.`;
+            return `Melhores horários (Delta T 2–8°C) nas próximas ${CLIMATE_HOURS}h: ${formatted.join(', ')}.`;
         }
 
         function buildAITechnicalAnalysis(deltaTValues, windValues, precipitationValues, humidityValues, temperatureValues, labels) {
@@ -1299,7 +1301,7 @@
             const pctAtt = ((attCount / totalHours) * 100).toFixed(0);
             const pctBloq = ((bloqCount / totalHours) * 100).toFixed(0);
 
-            let summary = `Análise das próximas 48h: ${pctLib}% do período com condições ideais, `;
+            let summary = `Análise das próximas ${CLIMATE_HOURS}h: ${pctLib}% do período com condições ideais, `;
             summary += `${pctAtt}% exige atenção e ${pctBloq}% não recomendado para aplicação. `;
 
             if (libCount > attCount + bloqCount) {
@@ -1472,7 +1474,7 @@
             });
 
             // ==================== PÁGINA 2: QUALIDADE DA ÁGUA + DELTA T (Portrait) ====================
-            doc.addPage('portrait');
+            doc.addPage('a4', 'portrait');
             const pageWidth = doc.internal.pageSize.getWidth();
             doc.setFillColor(15, 118, 110);
             doc.rect(0, 0, pageWidth, 20, 'F');
@@ -1497,13 +1499,28 @@
             const origem = document.getElementById('agua_origem').value;
             const obs = document.getElementById('agua_obs').value || 'Sem observações';
 
-            doc.text(`pH: ${ph}`, 15, y);
-            doc.text(`Dureza: ${dureza} µS/cm`, 70, y);
-            doc.text(`Origem: ${origem}`, 140, y);
-            y += 6;
-            doc.text(`Observações: ${obs}`, 15, y);
-            y += 6;
-            doc.text(`pH na calda: ${caldaPh}`, 15, y);
+            const waterColGap = 10;
+            const waterColWidth = (pageWidth - 30 - waterColGap) / 2;
+            const waterLeftX = 15;
+            const waterRightX = waterLeftX + waterColWidth + waterColGap;
+            let waterLeftY = y;
+            let waterRightY = y;
+
+            doc.text(`pH: ${ph}`, waterLeftX, waterLeftY);
+            waterLeftY += 6;
+            doc.text(`Dureza: ${dureza} µS/cm`, waterLeftX, waterLeftY);
+            waterLeftY += 6;
+            doc.text(`Origem: ${origem}`, waterLeftX, waterLeftY);
+            waterLeftY += 6;
+
+            doc.text(`pH na calda: ${caldaPh}`, waterRightX, waterRightY);
+            waterRightY += 6;
+            doc.text('Observações:', waterRightX, waterRightY);
+            waterRightY += 4;
+            doc.text(obs, waterRightX, waterRightY, { maxWidth: waterColWidth });
+            waterRightY += 8;
+
+            y = Math.max(waterLeftY, waterRightY) + 4;
 
             y += 14;
             doc.setFontSize(11);
@@ -1548,7 +1565,7 @@
             doc.setTextColor(0, 0, 0);
 
             // ==================== PÁGINA 3: CONDIÇÕES METEOROLÓGICAS + ANÁLISE TÉCNICA (Portrait) ====================
-            doc.addPage('portrait');
+            doc.addPage('a4', 'portrait');
             doc.setFillColor(15, 118, 110);
             doc.rect(0, 0, pageWidth, 20, 'F');
 
@@ -1566,7 +1583,7 @@
             doc.setFontSize(7);
             doc.setFont(undefined, 'normal');
             doc.setTextColor(100, 100, 100);
-            doc.text('Temperatura, Umidade Relativa e Previsão Pluviométrica (48h)', 15, y + 5);
+            doc.text(`Temperatura, Umidade Relativa e Previsão Pluviométrica (${CLIMATE_HOURS}h)`, 15, y + 5);
             doc.setTextColor(0, 0, 0);
 
             const chartClima = document.getElementById('chartClima');
@@ -1642,97 +1659,88 @@
                 y += 6;
             }
 
-            // LIBERADO section
-            doc.setFillColor(240, 253, 244);
-            doc.roundedRect(15, y, textWidth, 4, 1, 1, 'F');
-            doc.setFontSize(7);
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(22, 101, 52);
-            doc.text('LIBERADO PARA APLICAÇÃO', 20, y + 3);
-            y += 6;
+            const columnGap = 8;
+            const columnWidth = (textWidth - columnGap) / 2;
+            const leftX = 15;
+            const rightX = leftX + columnWidth + columnGap;
+            let leftY = y;
+            let rightY = y;
 
-            doc.setFont(undefined, 'normal');
-            doc.setFontSize(6.5);
-            doc.setTextColor(0, 0, 0);
-            if (analysis.liberado.length === 0) {
-                doc.text('Nenhum período com condições ideais identificado.', 20, y);
-                y += 4;
-            } else {
-                analysis.liberado.forEach(range => {
-                    const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
-                    doc.setFont(undefined, 'bold');
-                    doc.text(period, 20, y);
-                    doc.setFont(undefined, 'normal');
-                    if (range.reasons.length) {
-                        doc.setTextColor(80, 80, 80);
-                        doc.text(range.reasons[0], 20, y + 3.5, { maxWidth: textWidth - 10 });
-                        doc.setTextColor(0, 0, 0);
-                    }
-                    y += 8;
-                });
-            }
+            const renderSection = ({ title, titleColor, bgColor, ranges, emptyText, reasonColor, formatReasons }, startX, startY) => {
+                doc.setFillColor(...bgColor);
+                doc.roundedRect(startX, startY, columnWidth, 4, 1, 1, 'F');
+                doc.setFontSize(7);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(...titleColor);
+                doc.text(title, startX + 4, startY + 3);
 
-            // ATENÇÃO section
-            y += 2;
-            doc.setFillColor(255, 251, 235);
-            doc.roundedRect(15, y, textWidth, 4, 1, 1, 'F');
-            doc.setFontSize(7);
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(146, 64, 14);
-            doc.text('APLICAR COM ATENÇÃO', 20, y + 3);
-            y += 6;
+                let currentY = startY + 6;
+                doc.setFont(undefined, 'normal');
+                doc.setFontSize(6.5);
+                doc.setTextColor(0, 0, 0);
 
-            doc.setFont(undefined, 'normal');
-            doc.setFontSize(6.5);
-            doc.setTextColor(0, 0, 0);
-            if (analysis.atencao.length === 0) {
-                doc.text('Nenhum período com condições marginais identificado.', 20, y);
-                y += 4;
-            } else {
-                analysis.atencao.forEach(range => {
-                    const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
-                    doc.setFont(undefined, 'bold');
-                    doc.text(period, 20, y);
-                    doc.setFont(undefined, 'normal');
-                    if (range.reasons.length) {
-                        doc.setTextColor(120, 80, 0);
-                        doc.text(range.reasons.join('; '), 20, y + 3.5, { maxWidth: textWidth - 10 });
-                        doc.setTextColor(0, 0, 0);
-                    }
-                    y += 8;
-                });
-            }
+                if (!ranges.length) {
+                    doc.text(emptyText, startX + 4, currentY, { maxWidth: columnWidth - 8 });
+                    currentY += 4;
+                } else {
+                    ranges.forEach(range => {
+                        const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
+                        doc.setFont(undefined, 'bold');
+                        doc.text(period, startX + 4, currentY);
+                        doc.setFont(undefined, 'normal');
+                        if (range.reasons.length) {
+                            doc.setTextColor(...reasonColor);
+                            doc.text(formatReasons(range.reasons), startX + 4, currentY + 3.5, { maxWidth: columnWidth - 8 });
+                            doc.setTextColor(0, 0, 0);
+                        }
+                        currentY += 8;
+                    });
+                }
 
-            // NÃO APLICAR section
-            y += 2;
-            doc.setFillColor(254, 242, 242);
-            doc.roundedRect(15, y, textWidth, 4, 1, 1, 'F');
-            doc.setFontSize(7);
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(153, 27, 27);
-            doc.text('NÃO APLICAR', 20, y + 3);
-            y += 6;
+                return currentY + 2;
+            };
 
-            doc.setFont(undefined, 'normal');
-            doc.setFontSize(6.5);
-            doc.setTextColor(0, 0, 0);
-            if (analysis.naoAplicar.length === 0) {
-                doc.text('Nenhum período com condições impeditivas identificado.', 20, y);
-                y += 4;
-            } else {
-                analysis.naoAplicar.forEach(range => {
-                    const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
-                    doc.setFont(undefined, 'bold');
-                    doc.text(period, 20, y);
-                    doc.setFont(undefined, 'normal');
-                    if (range.reasons.length) {
-                        doc.setTextColor(180, 30, 30);
-                        doc.text(range.reasons.join('; '), 20, y + 3.5, { maxWidth: textWidth - 10 });
-                        doc.setTextColor(0, 0, 0);
-                    }
-                    y += 8;
-                });
-            }
+            leftY = renderSection(
+                {
+                    title: 'LIBERADO PARA APLICAÇÃO',
+                    titleColor: [22, 101, 52],
+                    bgColor: [240, 253, 244],
+                    ranges: analysis.liberado,
+                    emptyText: 'Nenhum período com condições ideais identificado.',
+                    reasonColor: [80, 80, 80],
+                    formatReasons: (reasons) => reasons[0]
+                },
+                leftX,
+                leftY
+            );
+
+            rightY = renderSection(
+                {
+                    title: 'APLICAR COM ATENÇÃO',
+                    titleColor: [146, 64, 14],
+                    bgColor: [255, 251, 235],
+                    ranges: analysis.atencao,
+                    emptyText: 'Nenhum período com condições marginais identificado.',
+                    reasonColor: [120, 80, 0],
+                    formatReasons: (reasons) => reasons.join('; ')
+                },
+                rightX,
+                rightY
+            );
+
+            rightY = renderSection(
+                {
+                    title: 'NÃO APLICAR',
+                    titleColor: [153, 27, 27],
+                    bgColor: [254, 242, 242],
+                    ranges: analysis.naoAplicar,
+                    emptyText: 'Nenhum período com condições impeditivas identificado.',
+                    reasonColor: [180, 30, 30],
+                    formatReasons: (reasons) => reasons.join('; ')
+                },
+                rightX,
+                rightY + 2
+            );
 
             // Technical reference footer
             const pageHeight = doc.internal.pageSize.getHeight();
@@ -1752,36 +1760,28 @@
             charts.forEach(c => c.destroy());
             charts = [];
 
-            const hours = climateData?.labels || Array.from({length: 48}, (_, i) => {
+            const hours = climateData?.labels || Array.from({length: CLIMATE_HOURS}, (_, i) => {
                 const dayOffset = Math.floor(i / 24);
                 const hour = String(i % 24).padStart(2, '0');
                 return `${dayOffset + 1}º dia ${hour}:00`;
             });
             const deltaSeries = climateData?.deltaT || [
                 2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
-                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2,
-                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
                 3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
             ];
             const temperatureSeries = climateData?.temperatures || [
-                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
-                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20,
                 20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
                 32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20
             ];
             const humiditySeries = climateData?.humidity || [
                 85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
-                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85,
-                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
                 46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
             ];
             const windSeries = climateData?.winds || [
                 4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
                 7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
             ];
-            const precipSeries = climateData?.precipitation || Array.from({ length: 48 }, () => 0);
+            const precipSeries = climateData?.precipitation || Array.from({ length: CLIMATE_HOURS }, () => 0);
 
             const chartDeltaT = new Chart(document.getElementById('chartDeltaT'), {
                 type: 'line',
@@ -1992,36 +1992,28 @@
             const climaTable = document.querySelector('#clima-table tbody');
             if (!deltaTable || !climaTable) return;
 
-            const hours = climateData?.labels || Array.from({length: 48}, (_, i) => {
+            const hours = climateData?.labels || Array.from({length: CLIMATE_HOURS}, (_, i) => {
                 const dayOffset = Math.floor(i / 24);
                 const hour = String(i % 24).padStart(2, '0');
                 return `${dayOffset + 1}º dia ${hour}:00`;
             });
             const deltaSeries = climateData?.deltaT || [
                 2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
-                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2,
-                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
                 3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
             ];
             const temperatureSeries = climateData?.temperatures || [
-                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
-                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20,
                 20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
                 32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20
             ];
             const humiditySeries = climateData?.humidity || [
                 85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
-                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85,
-                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
                 46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
             ];
             const windSeries = climateData?.winds || [
                 4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
                 7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
             ];
-            const precipSeries = climateData?.precipitation || Array.from({ length: 48 }, () => 0);
+            const precipSeries = climateData?.precipitation || Array.from({ length: CLIMATE_HOURS }, () => 0);
 
             deltaTable.innerHTML = hours.map((label, idx) => `
                 <tr>
@@ -2092,9 +2084,9 @@
 
             const start = startDate ?? new Date();
             const end = new Date(start);
-            end.setDate(end.getDate() + 2);
+            end.setDate(end.getDate() + 1);
             const startIndex = Math.max(times.findIndex(t => new Date(t) >= start), 0);
-            const endIndex = Math.max(times.findIndex(t => new Date(t) >= end), startIndex + 48);
+            const endIndex = Math.max(times.findIndex(t => new Date(t) >= end), startIndex + CLIMATE_HOURS);
             const sliceTimes = times.slice(startIndex, endIndex);
             const sliceTemps = temps.slice(startIndex, endIndex);
             const sliceHumidity = humidity.slice(startIndex, endIndex);
