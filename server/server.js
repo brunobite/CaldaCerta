@@ -76,12 +76,7 @@ app.use(express.static(path.join(__dirname, '../web')));
 // 2. Servir também arquivos da pasta atual (server) se necessário
 app.use(express.static(__dirname));
 
-// 3. Para todas as outras rotas, servir index.html (Single Page App)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../web/index.html'));
-});
-
-// 🔧 API endpoints (se houver)
+// 🔧 API endpoints
 app.get('/api/status', (req, res) => {
   res.json({ status: 'OK', message: 'CaldaCerta Pro Online' });
 });
@@ -154,17 +149,11 @@ app.get('/api/inmet', async (req, res) => {
       station: stationCode,
       hourly: {
         time,
-        'temperature_2m': temperature,
-        'relativehumidity_2m': humidity,
-        'windspeed_10m': windspeed,
-        precipitation,
-      },
         temperature_2m: temperature,
         relativehumidity_2m: humidity,
         windspeed_10m: windspeed,
-        precipitation
-        windspeed_10m: windspeed
-      }
+        precipitation,
+      },
     });
   } catch (error) {
     console.error('Erro ao consultar INMET:', error);
@@ -244,6 +233,11 @@ app.put('/api/simulacoes/:id', async (req, res) => {
     console.error('Erro ao atualizar simulação:', error);
     res.status(500).json({ error: 'Erro ao atualizar simulação' });
   }
+});
+
+// 3. Para todas as outras rotas, servir index.html (Single Page App)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../web/index.html'));
 });
 
 // 🔧 Configurar porta
