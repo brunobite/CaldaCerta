@@ -8,8 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;600;800&display=swap" rel="stylesheet">
 
@@ -239,9 +237,12 @@
                         <select id="id_objetivo" class="input-box">
                             <option value="">Selecione...</option>
                             <option value="Controle de Pragas">Controle de Pragas</option>
+                            <option value="Controle de Pragas/Doenças">Controle de Pragas/Doenças</option>
                             <option value="Controle de Doenças">Controle de Doenças</option>
                             <option value="Controle de Plantas Daninhas">Controle de Plantas Daninhas</option>
+                            <option value="Aplicação V0">Aplicação V0</option>
                             <option value="Adubação Foliar">Adubação Foliar</option>
+                            <option value="Capina Química">Capina Química</option>
                             <option value="Dessecação">Dessecação</option>
                             <option value="Regulador de Crescimento">Regulador de Crescimento</option>
                         </select>
@@ -453,7 +454,7 @@
                             </select>
                         </div>
                         <div>
-                            <label class="label-text">pH da Calda</label>
+                            <label class="label-text">pH FISPQ</label>
                             <input type="number" id="p_ph" class="input-box" placeholder="Ex: 6.5" step="0.1" min="0" max="14">
                         </div>
                     </div>
@@ -492,13 +493,21 @@
             </div>
 
             <div class="card card-compact mb-6">
-                <label class="label-text">Volume da Jarra Teste</label>
-                <select id="jarra_vol" class="input-box" style="margin-bottom: 0;" onchange="renderOrdem()">
-                    <option value="500">500 ml</option>
-                    <option value="1000" selected>1000 ml (1 Litro)</option>
-                    <option value="1500">1500 ml (1,5 Litros)</option>
-                    <option value="2000">2000 ml (2 Litros)</option>
-                </select>
+                <div class="grid grid-2">
+                    <div>
+                        <label class="label-text">Volume da Jarra Teste</label>
+                        <select id="jarra_vol" class="input-box" style="margin-bottom: 0;" onchange="renderOrdem()">
+                            <option value="500">500 ml</option>
+                            <option value="1000" selected>1000 ml (1 Litro)</option>
+                            <option value="1500">1500 ml (1,5 Litros)</option>
+                            <option value="2000">2000 ml (2 Litros)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="label-text">pH na calda</label>
+                        <input type="number" id="calda_ph" class="input-box" placeholder="Ex: 6.8" step="0.1" min="0" max="14">
+                    </div>
+                </div>
             </div>
 
             <div class="card card-compact mb-6">
@@ -524,7 +533,7 @@
 
             <h3 class="font-bold text-lg mb-4 text-slate-700">
                 <i class="fa-solid fa-flask text-teal-600 mr-2"></i>
-                Ordem de Mistura (Arraste para reordenar)
+                Ordem de Mistura (Selecione para reordenar)
             </h3>
             <div class="ordem-scroll-container">
                 <div id="ordem-container" class="ordem-inner mb-8"></div>

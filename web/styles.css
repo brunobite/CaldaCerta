@@ -317,6 +317,7 @@
         }
 
         .ordem-inner { min-width: 600px; }
+        .ordem-select { min-width: 160px; }
 
         /* Badges */
         .badge {
@@ -847,4 +848,36 @@
 
         .btn-logout-header:hover {
             background: rgba(255,255,255,0.3);
+        }
+
+        @media (max-width: 720px) {
+            .user-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.75rem;
+            }
+
+            .user-info-header {
+                width: 100%;
+                flex-wrap: wrap;
+                justify-content: flex-start;
+                gap: 0.5rem;
+            }
+
+            .user-badge-header {
+                max-width: 100%;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .btn-logout-header {
+                width: 100%;
+                text-align: center;
+                padding: 0.6rem 1rem;
+            }
+
+            .ordem-select {
+                width: 100%;
+            }
         }
