@@ -1089,6 +1089,63 @@
             return 'Ventos entre 3–10 km/h. Condições favoráveis para aplicação.';
         }
 
+        function buildApplicationReport(deltaTValues, windValues, labels) {
+            if (!deltaTValues?.length || !labels?.length) {
+                return {
+                    ideal: 'Sem dados suficientes para horários ideais.',
+                    caution: 'Sem dados suficientes para horários de cautela.'
+                };
+            }
+
+            const winds = windValues?.length ? windValues : Array(deltaTValues.length).fill(6);
+            const idealRanges = [];
+            const cautionRanges = [];
+            let idealStart = null;
+            let cautionStart = null;
+
+            deltaTValues.forEach((deltaT, index) => {
+                const wind = winds[index] ?? 0;
+                const isIdeal = deltaT >= 2 && deltaT <= 8 && wind >= 3 && wind <= 10;
+                const isAvoid = deltaT > 10 || deltaT < 2 || wind >= 15;
+                const isCaution = !isIdeal && !isAvoid && (
+                    (deltaT > 8 && deltaT <= 10) ||
+                    (wind > 10 && wind < 15) ||
+                    wind < 3
+                );
+
+                if (isIdeal && idealStart === null) idealStart = index;
+                if (!isIdeal && idealStart !== null) {
+                    idealRanges.push([idealStart, index - 1]);
+                    idealStart = null;
+                }
+
+                if (isCaution && cautionStart === null) cautionStart = index;
+                if (!isCaution && cautionStart !== null) {
+                    cautionRanges.push([cautionStart, index - 1]);
+                    cautionStart = null;
+                }
+            });
+
+            if (idealStart !== null) idealRanges.push([idealStart, deltaTValues.length - 1]);
+            if (cautionStart !== null) cautionRanges.push([cautionStart, deltaTValues.length - 1]);
+
+            const formatRanges = (ranges) => {
+                if (!ranges.length) return 'Sem horários nesta faixa.';
+                return ranges
+                    .map(([start, end]) => {
+                        const startLabel = labels[start] ?? '';
+                        const endLabel = labels[end] ?? '';
+                        return start === end ? startLabel : `${startLabel}–${endLabel}`;
+                    })
+                    .join(', ');
+            };
+
+            return {
+                ideal: `Horários ideais: ${formatRanges(idealRanges)}.`,
+                caution: `Horários de cautela: ${formatRanges(cautionRanges)}.`
+            };
+        }
+
         function buildBestApplicationWindows(deltaTValues, labels) {
             if (!deltaTValues?.length || !labels?.length) {
                 return 'Sem dados de Delta T para estimar horários.';
@@ -1345,6 +1402,12 @@
             const windMessage = buildWindSummary(climateData?.winds);
             doc.text(`Ventos: ${windMessage}`, 15, alertY + 10, { maxWidth: 260 });
             doc.text('Referência técnica: Delta T ideal entre 2–8°C; 8–10°C exige cautela; >10°C evitar; <2°C risco de inversão térmica.', 15, alertY + 15, { maxWidth: 260 });
+            const report = buildApplicationReport(climateData?.deltaT, climateData?.winds, climateData?.labels);
+            doc.setFont(undefined, 'bold');
+            doc.text('RELATÓRIO TÉCNICO', 15, alertY + 20);
+            doc.setFont(undefined, 'normal');
+            doc.text(report.ideal, 15, alertY + 25, { maxWidth: 260 });
+            doc.text(report.caution, 15, alertY + 30, { maxWidth: 260 });
 
             doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('✅ PDF completo gerado com sucesso!', 'success');
@@ -1396,6 +1459,42 @@
                         pointBackgroundColor: '#14b8a6',
                         pointBorderColor: '#fff',
                         pointBorderWidth: 2
+                    },
+                    {
+                        label: 'Ideal (2–8°C)',
+                        data: Array(hours.length).fill(8),
+                        borderColor: '#22c55e',
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        fill: false
+                    },
+                    {
+                        label: 'Inversão térmica (<2°C)',
+                        data: Array(hours.length).fill(2),
+                        borderColor: '#0ea5e9',
+                        borderDash: [4, 4],
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        fill: false
+                    },
+                    {
+                        label: 'Cautela (8–10°C)',
+                        data: Array(hours.length).fill(10),
+                        borderColor: '#f59e0b',
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        fill: false
+                    },
+                    {
+                        label: 'Evitar (>10°C)',
+                        data: Array(hours.length).fill(12),
+                        borderColor: '#ef4444',
+                        borderDash: [2, 4],
+                        pointRadius: 0,
+                        borderWidth: 2,
+                        fill: false
                     }]
                 },
                 options: {
@@ -1414,7 +1513,7 @@
                         y: {
                             beginAtZero: true,
                             grid: { color: '#f5f5f4' },
-                            title: { display: true, text: 'Delta T (°C)' }
+                            title: { display: true, text: 'Delta T (°C) — Ideal 2–8°C | Cautela 8–10°C | Evitar >10°C | Inversão <2°C' }
                         },
                         x: { grid: { display: false } }
                     }
