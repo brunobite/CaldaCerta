@@ -154,6 +154,11 @@ app.get('/api/inmet', async (req, res) => {
       station: stationCode,
       hourly: {
         time,
+        'temperature_2m': temperature,
+        'relativehumidity_2m': humidity,
+        'windspeed_10m': windspeed,
+        precipitation,
+      },
         temperature_2m: temperature,
         relativehumidity_2m: humidity,
         windspeed_10m: windspeed,
