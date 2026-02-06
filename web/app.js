@@ -405,6 +405,9 @@
             if (!validateRange('agua_ph', 0, 14, '❌ O pH da água deve estar entre 0 e 14')) {
                 return;
             }
+            if (!validateRange('calda_ph', 0, 14, '❌ O pH da calda deve estar entre 0 e 14')) {
+                return;
+            }
 
             if (products.length === 0) {
                 showToast('❌ Adicione pelo menos um produto', 'error');
@@ -434,6 +437,7 @@
                 agua_dureza: parseFloat(document.getElementById('agua_dureza').value) || null,
                 agua_origem: document.getElementById('agua_origem').value,
                 agua_observacoes: document.getElementById('agua_obs').value,
+                calda_ph: parseFloat(document.getElementById('calda_ph').value) || null,
                 jarra_volume: parseInt(document.getElementById('jarra_vol').value),
                 respeitar_hierarquia: document.getElementById('respeitarHierarquia').checked ? 1 : 0,
                 criterio_ordenacao: document.getElementById('criterioOrdenacao').value,
@@ -616,6 +620,7 @@
                 document.getElementById('agua_dureza').value = item.agua_dureza || '';
                 document.getElementById('agua_origem').value = item.agua_origem || 'Poço';
                 document.getElementById('agua_obs').value = item.agua_observacoes || '';
+                document.getElementById('calda_ph').value = item.calda_ph || '';
 
                 products = (item.produtos || []).map(p => ({
                     id: p.id || (Date.now() + Math.random()),
