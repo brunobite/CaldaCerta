@@ -877,8 +877,8 @@
                 return `
                     <div class="product-item ordem-card" data-id="${p.id}">
                         <div class="flex-1">
-                            <div class="flex justify-between items-center mb-3">
-                                <div class="flex items-center gap-3">
+                            <div class="ordem-card-header flex justify-between items-center mb-3">
+                                <div class="ordem-card-badges flex items-center gap-3">
                                     <span class="badge badge-primary">Ordem ${i+1}</span>
                                     <span class="badge badge-accent">${p.formulacao}</span>
                                     ${phDisplay ? `<span class="badge badge-success">${phDisplay}</span>` : ''}
