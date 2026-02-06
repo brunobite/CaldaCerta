@@ -159,6 +159,12 @@ app.get('/api/inmet', async (req, res) => {
         'windspeed_10m': windspeed,
         precipitation,
       },
+        temperature_2m: temperature,
+        relativehumidity_2m: humidity,
+        windspeed_10m: windspeed,
+        precipitation
+        windspeed_10m: windspeed
+      }
     });
   } catch (error) {
     console.error('Erro ao consultar INMET:', error);
