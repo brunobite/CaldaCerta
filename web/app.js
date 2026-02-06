@@ -1186,12 +1186,140 @@
             return `Melhores horários (Delta T 2–8°C) nas próximas 48h: ${formatted.join(', ')}.`;
         }
 
-        // PDF (mantido como estava no seu código)
+        function buildAITechnicalAnalysis(deltaTValues, windValues, precipitationValues, humidityValues, temperatureValues, labels) {
+            if (!deltaTValues?.length || !labels?.length) {
+                return { liberado: [], atencao: [], naoAplicar: [], summary: 'Sem dados suficientes para gerar a análise técnica.' };
+            }
+
+            const winds = windValues?.length ? windValues : Array(deltaTValues.length).fill(6);
+            const precip = precipitationValues?.length ? precipitationValues : Array(deltaTValues.length).fill(0);
+            const humidity = humidityValues?.length ? humidityValues : Array(deltaTValues.length).fill(70);
+            const temps = temperatureValues?.length ? temperatureValues : Array(deltaTValues.length).fill(25);
+
+            const hourlyStatus = deltaTValues.map((deltaT, idx) => {
+                const wind = winds[idx] ?? 0;
+                const rain = precip[idx] ?? 0;
+                const hum = humidity[idx] ?? 70;
+                const temp = temps[idx] ?? 25;
+                const reasons = [];
+                let status = 'liberado';
+
+                if (rain > 0) {
+                    status = 'naoAplicar';
+                    reasons.push(`Chuva prevista (${rain.toFixed(1)} mm)`);
+                }
+                if (deltaT > 10) {
+                    status = 'naoAplicar';
+                    reasons.push(`Delta T muito alto (${deltaT.toFixed(1)}°C) - alto risco de evaporação`);
+                }
+                if (deltaT < 2) {
+                    status = 'naoAplicar';
+                    reasons.push(`Delta T muito baixo (${deltaT.toFixed(1)}°C) - risco de inversão térmica`);
+                }
+                if (wind >= 15) {
+                    status = 'naoAplicar';
+                    reasons.push(`Vento excessivo (${wind.toFixed(1)} km/h) - alto risco de deriva`);
+                }
+
+                if (status !== 'naoAplicar') {
+                    if (deltaT > 8 && deltaT <= 10) {
+                        status = 'atencao';
+                        reasons.push(`Delta T elevado (${deltaT.toFixed(1)}°C) - risco moderado de evaporação`);
+                    }
+                    if (wind >= 10 && wind < 15) {
+                        status = 'atencao';
+                        reasons.push(`Vento moderado (${wind.toFixed(1)} km/h) - ajustar tamanho de gota`);
+                    }
+                    if (wind < 3) {
+                        status = status === 'liberado' ? 'atencao' : status;
+                        reasons.push(`Vento muito baixo (${wind.toFixed(1)} km/h) - possível inversão térmica`);
+                    }
+                    if (hum < 55) {
+                        status = status === 'liberado' ? 'atencao' : status;
+                        reasons.push(`Umidade baixa (${hum.toFixed(0)}%) - maior evaporação`);
+                    }
+                    if (temp > 35) {
+                        status = status === 'liberado' ? 'atencao' : status;
+                        reasons.push(`Temperatura elevada (${temp.toFixed(1)}°C)`);
+                    }
+                }
+
+                if (status === 'liberado' && reasons.length === 0) {
+                    reasons.push(`Condições ideais: Delta T ${deltaT.toFixed(1)}°C, Vento ${wind.toFixed(1)} km/h, Umid. ${hum.toFixed(0)}%`);
+                }
+
+                return { label: labels[idx], status, reasons, deltaT, wind, rain: rain, humidity: hum, temp };
+            });
+
+            const buildRanges = (statusFilter) => {
+                const ranges = [];
+                let start = null;
+                let currentReasons = [];
+
+                hourlyStatus.forEach((h, idx) => {
+                    if (h.status === statusFilter) {
+                        if (start === null) {
+                            start = idx;
+                            currentReasons = [...h.reasons];
+                        } else {
+                            h.reasons.forEach(r => {
+                                if (!currentReasons.includes(r)) currentReasons.push(r);
+                            });
+                        }
+                    } else if (start !== null) {
+                        ranges.push({
+                            start: labels[start],
+                            end: labels[idx - 1],
+                            reasons: currentReasons.slice(0, 3)
+                        });
+                        start = null;
+                        currentReasons = [];
+                    }
+                });
+                if (start !== null) {
+                    ranges.push({
+                        start: labels[start],
+                        end: labels[hourlyStatus.length - 1],
+                        reasons: currentReasons.slice(0, 3)
+                    });
+                }
+                return ranges;
+            };
+
+            const liberado = buildRanges('liberado');
+            const atencao = buildRanges('atencao');
+            const naoAplicar = buildRanges('naoAplicar');
+
+            const totalHours = hourlyStatus.length;
+            const libCount = hourlyStatus.filter(h => h.status === 'liberado').length;
+            const attCount = hourlyStatus.filter(h => h.status === 'atencao').length;
+            const bloqCount = hourlyStatus.filter(h => h.status === 'naoAplicar').length;
+
+            const pctLib = ((libCount / totalHours) * 100).toFixed(0);
+            const pctAtt = ((attCount / totalHours) * 100).toFixed(0);
+            const pctBloq = ((bloqCount / totalHours) * 100).toFixed(0);
+
+            let summary = `Análise das próximas 48h: ${pctLib}% do período com condições ideais, `;
+            summary += `${pctAtt}% exige atenção e ${pctBloq}% não recomendado para aplicação. `;
+
+            if (libCount > attCount + bloqCount) {
+                summary += 'Cenário predominantemente favorável para pulverização.';
+            } else if (bloqCount > libCount) {
+                summary += 'Cenário predominantemente desfavorável. Priorize as janelas de aplicação identificadas.';
+            } else {
+                summary += 'Cenário misto. Planeje a aplicação nos horários liberados e monitore as condições.';
+            }
+
+            return { liberado, atencao, naoAplicar, summary, stats: { libCount, attCount, bloqCount, pctLib, pctAtt, pctBloq } };
+        }
+
+        // PDF
         window.generatePDF = () => {
             syncProductObservationsFromDom();
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
 
+            // ==================== PÁGINA 1: PLANO DE APLICAÇÃO (Landscape) ====================
             doc.setFillColor(15, 118, 110);
             doc.rect(0, 0, 297, 35, 'F');
 
@@ -1308,14 +1436,14 @@
                     halign: 'center',
                     valign: 'middle'
                 },
-                bodyStyles: { fontSize: 8, valign: 'middle' },
+                bodyStyles: { fontSize: 8, valign: 'middle', textColor: [0, 0, 0] },
                 columnStyles: {
-                    0: { cellWidth: 10, halign: 'center' },
-                    1: { cellWidth: 65 },
-                    2: { cellWidth: 45 },
-                    3: { cellWidth: 18, halign: 'center' },
-                    4: { cellWidth: 22, halign: 'center' },
-                    5: { cellWidth: 22, halign: 'center' },
+                    0: { cellWidth: 10, halign: 'center', textColor: [0, 0, 0] },
+                    1: { cellWidth: 65, textColor: [0, 0, 0] },
+                    2: { cellWidth: 45, textColor: [0, 0, 0] },
+                    3: { cellWidth: 18, halign: 'center', textColor: [0, 0, 0] },
+                    4: { cellWidth: 22, halign: 'center', textColor: [0, 0, 0] },
+                    5: { cellWidth: 22, halign: 'center', textColor: [0, 0, 0] },
                     6: {
                         cellWidth: 28,
                         halign: 'center',
@@ -1343,18 +1471,19 @@
                 }
             });
 
+            // ==================== PÁGINA 2: QUALIDADE DA ÁGUA + DELTA T (Portrait) ====================
             doc.addPage('portrait');
             const pageWidth = doc.internal.pageSize.getWidth();
             doc.setFillColor(15, 118, 110);
             doc.rect(0, 0, pageWidth, 20, 'F');
 
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(16);
+            doc.setFontSize(14);
             doc.setFont(undefined, 'bold');
-            doc.text('QUALIDADE DA ÁGUA E CONDIÇÕES CLIMÁTICAS', pageWidth / 2, 12, { align: 'center' });
+            doc.text('QUALIDADE DA ÁGUA E DELTA T', pageWidth / 2, 13, { align: 'center' });
 
             doc.setTextColor(0, 0, 0);
-            doc.setFontSize(12);
+            doc.setFontSize(11);
             doc.setFont(undefined, 'bold');
             doc.text('1. QUALIDADE DA ÁGUA', 15, 35);
 
@@ -1376,86 +1505,242 @@
             y += 6;
             doc.text(`pH na calda: ${caldaPh}`, 15, y);
 
-            y += 12;
+            y += 14;
             doc.setFontSize(11);
             doc.setFont(undefined, 'bold');
-
             doc.text('2. GRÁFICO DELTA T', 15, y);
+
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(100, 100, 100);
+            doc.text('Referência: Ideal 2-8°C | Cautela 8-10°C | Evitar >10°C | Inversão <2°C', 15, y + 5);
+            doc.setTextColor(0, 0, 0);
+
             const chartDeltaT = document.getElementById('chartDeltaT');
             const chartWidth = pageWidth - 30;
-            const chartHeight = 70;
+            const chartHeightDelta = 100;
             if (chartDeltaT) {
                 const imgDeltaT = chartDeltaT.toDataURL('image/png');
-                doc.addImage(imgDeltaT, 'PNG', 15, y + 5, chartWidth, chartHeight);
+                doc.addImage(imgDeltaT, 'PNG', 15, y + 8, chartWidth, chartHeightDelta);
             }
 
-            const climaY = y + chartHeight + 18;
-            doc.text('3. CONDIÇÕES METEOROLÓGICAS', 15, climaY);
-            const chartClima = document.getElementById('chartClima');
-            if (chartClima) {
-                const imgClima = chartClima.toDataURL('image/png');
-                doc.addImage(imgClima, 'PNG', 15, climaY + 5, chartWidth, chartHeight);
-            }
-
-            const alertY = climaY + chartHeight + 12;
-            doc.setFontSize(10);
-            doc.setFont(undefined, 'bold');
-            doc.text('ALERTA DE MELHORES HORÁRIOS PARA APLICAÇÃO', 15, alertY);
+            y = y + chartHeightDelta + 16;
             doc.setFontSize(8);
             doc.setFont(undefined, 'normal');
             const windowMessage = buildBestApplicationWindows(climateData?.deltaT, climateData?.labels);
             const textWidth = pageWidth - 30;
-            doc.text(windowMessage, 15, alertY + 5, { maxWidth: textWidth });
-            const windMessage = buildWindSummary(climateData?.winds);
-            doc.text(`Ventos: ${windMessage}`, 15, alertY + 10, { maxWidth: textWidth });
-            doc.text('Referência técnica: Delta T ideal entre 2–8°C; 8–10°C exige cautela; >10°C evitar; <2°C risco de inversão térmica.', 15, alertY + 15, { maxWidth: textWidth });
-            const report = buildApplicationReport(climateData?.deltaT, climateData?.winds, climateData?.precipitation, climateData?.labels);
-            doc.setFont(undefined, 'bold');
-            doc.text('RELATÓRIO TÉCNICO', 15, alertY + 20);
-            doc.setFont(undefined, 'normal');
-            doc.text(report.ideal, 15, alertY + 25, { maxWidth: textWidth });
-            doc.text(report.caution, 15, alertY + 30, { maxWidth: textWidth });
 
+            doc.setFillColor(240, 253, 244);
+            doc.roundedRect(15, y, textWidth, 22, 2, 2, 'F');
+            doc.setDrawColor(34, 197, 94);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(15, y, textWidth, 22, 2, 2, 'S');
+
+            doc.setFontSize(8);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(22, 101, 52);
+            doc.text('MELHORES HORÁRIOS PARA APLICAÇÃO', 20, y + 5);
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(7);
+            doc.text(windowMessage, 20, y + 10, { maxWidth: textWidth - 10 });
+            const windMessage = buildWindSummary(climateData?.winds);
+            doc.text(`Ventos: ${windMessage}`, 20, y + 16, { maxWidth: textWidth - 10 });
+            doc.setTextColor(0, 0, 0);
+
+            // ==================== PÁGINA 3: CONDIÇÕES METEOROLÓGICAS + ANÁLISE TÉCNICA (Portrait) ====================
             doc.addPage('portrait');
-            const tablePageWidth = doc.internal.pageSize.getWidth();
             doc.setFillColor(15, 118, 110);
-            doc.rect(0, 0, tablePageWidth, 20, 'F');
+            doc.rect(0, 0, pageWidth, 20, 'F');
+
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(14);
             doc.setFont(undefined, 'bold');
-            doc.text('TABELA CLIMÁTICA (48H)', tablePageWidth / 2, 12, { align: 'center' });
-
-            const tableHours = climateData?.labels || Array.from({length: 48}, (_, i) => {
-                const dayOffset = Math.floor(i / 24);
-                const hour = String(i % 24).padStart(2, '0');
-                return `${dayOffset + 1}º dia ${hour}:00`;
-            });
-            const tableDelta = climateData?.deltaT || Array.from({ length: 48 }, () => 0);
-            const tableTemp = climateData?.temperatures || Array.from({ length: 48 }, () => 0);
-            const tableHumidity = climateData?.humidity || Array.from({ length: 48 }, () => 0);
-            const tableWind = climateData?.winds || Array.from({ length: 48 }, () => 0);
-            const tablePrecip = climateData?.precipitation || Array.from({ length: 48 }, () => 0);
-
-            const climateRows = tableHours.map((label, idx) => ([
-                label,
-                Number(tableDelta[idx] ?? 0).toFixed(2),
-                Number(tableTemp[idx] ?? 0).toFixed(1),
-                Number(tableHumidity[idx] ?? 0).toFixed(0),
-                Number(tableWind[idx] ?? 0).toFixed(1),
-                Number(tablePrecip[idx] ?? 0).toFixed(1)
-            ]));
+            doc.text('CONDIÇÕES METEOROLÓGICAS E ANÁLISE TÉCNICA', pageWidth / 2, 13, { align: 'center' });
 
             doc.setTextColor(0, 0, 0);
-            doc.setFontSize(9);
-            doc.autoTable({
-                startY: 28,
-                head: [['Hora', 'Delta T', 'Temp (°C)', 'Umid (%)', 'Vento (km/h)', 'Chuva (mm)']],
-                body: climateRows,
-                theme: 'grid',
-                headStyles: { fillColor: [15, 118, 110], fontSize: 9, fontStyle: 'bold', textColor: [255, 255, 255] },
-                bodyStyles: { fontSize: 8 },
-                margin: { left: 10, right: 10 }
-            });
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            y = 32;
+            doc.text('3. CONDIÇÕES METEOROLÓGICAS', 15, y);
+
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(100, 100, 100);
+            doc.text('Temperatura, Umidade Relativa e Previsão Pluviométrica (48h)', 15, y + 5);
+            doc.setTextColor(0, 0, 0);
+
+            const chartClima = document.getElementById('chartClima');
+            const chartHeightClima = 75;
+            if (chartClima) {
+                const imgClima = chartClima.toDataURL('image/png');
+                doc.addImage(imgClima, 'PNG', 15, y + 8, chartWidth, chartHeightClima);
+            }
+
+            y = y + chartHeightClima + 16;
+            doc.setFontSize(11);
+            doc.setFont(undefined, 'bold');
+            doc.text('4. ANÁLISE TÉCNICA DE MOMENTOS DE APLICAÇÃO', 15, y);
+
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(100, 100, 100);
+            doc.text('Análise baseada em Delta T, velocidade do vento, umidade, temperatura e precipitação', 15, y + 5);
+            doc.setTextColor(0, 0, 0);
+
+            const analysis = buildAITechnicalAnalysis(
+                climateData?.deltaT, climateData?.winds, climateData?.precipitation,
+                climateData?.humidity, climateData?.temperatures, climateData?.labels
+            );
+
+            y += 10;
+
+            // Summary box
+            doc.setFillColor(239, 246, 255);
+            doc.roundedRect(15, y, textWidth, 14, 2, 2, 'F');
+            doc.setDrawColor(59, 130, 246);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(15, y, textWidth, 14, 2, 2, 'S');
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(30, 64, 175);
+            doc.text('RESUMO DA ANÁLISE', 20, y + 4);
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(7);
+            doc.text(analysis.summary, 20, y + 9, { maxWidth: textWidth - 10 });
+            doc.setTextColor(0, 0, 0);
+            y += 18;
+
+            // Statistics bar
+            if (analysis.stats) {
+                const barWidth = textWidth;
+                const barHeight = 6;
+                const libW = (analysis.stats.libCount / (analysis.stats.libCount + analysis.stats.attCount + analysis.stats.bloqCount)) * barWidth;
+                const attW = (analysis.stats.attCount / (analysis.stats.libCount + analysis.stats.attCount + analysis.stats.bloqCount)) * barWidth;
+                const bloqW = barWidth - libW - attW;
+
+                doc.setFillColor(34, 197, 94);
+                doc.rect(15, y, libW, barHeight, 'F');
+                doc.setFillColor(245, 158, 11);
+                doc.rect(15 + libW, y, attW, barHeight, 'F');
+                doc.setFillColor(239, 68, 68);
+                doc.rect(15 + libW + attW, y, bloqW, barHeight, 'F');
+
+                doc.setFontSize(6);
+                doc.setTextColor(0, 0, 0);
+                y += barHeight + 4;
+                doc.setFillColor(34, 197, 94);
+                doc.circle(17, y - 1, 1.5, 'F');
+                doc.text(`Liberado: ${analysis.stats.pctLib}%`, 20, y);
+
+                doc.setFillColor(245, 158, 11);
+                doc.circle(62, y - 1, 1.5, 'F');
+                doc.text(`Atenção: ${analysis.stats.pctAtt}%`, 65, y);
+
+                doc.setFillColor(239, 68, 68);
+                doc.circle(105, y - 1, 1.5, 'F');
+                doc.text(`Não Aplicar: ${analysis.stats.pctBloq}%`, 108, y);
+                y += 6;
+            }
+
+            // LIBERADO section
+            doc.setFillColor(240, 253, 244);
+            doc.roundedRect(15, y, textWidth, 4, 1, 1, 'F');
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(22, 101, 52);
+            doc.text('LIBERADO PARA APLICAÇÃO', 20, y + 3);
+            y += 6;
+
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(6.5);
+            doc.setTextColor(0, 0, 0);
+            if (analysis.liberado.length === 0) {
+                doc.text('Nenhum período com condições ideais identificado.', 20, y);
+                y += 4;
+            } else {
+                analysis.liberado.forEach(range => {
+                    const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
+                    doc.setFont(undefined, 'bold');
+                    doc.text(period, 20, y);
+                    doc.setFont(undefined, 'normal');
+                    if (range.reasons.length) {
+                        doc.setTextColor(80, 80, 80);
+                        doc.text(range.reasons[0], 20, y + 3.5, { maxWidth: textWidth - 10 });
+                        doc.setTextColor(0, 0, 0);
+                    }
+                    y += 8;
+                });
+            }
+
+            // ATENÇÃO section
+            y += 2;
+            doc.setFillColor(255, 251, 235);
+            doc.roundedRect(15, y, textWidth, 4, 1, 1, 'F');
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(146, 64, 14);
+            doc.text('APLICAR COM ATENÇÃO', 20, y + 3);
+            y += 6;
+
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(6.5);
+            doc.setTextColor(0, 0, 0);
+            if (analysis.atencao.length === 0) {
+                doc.text('Nenhum período com condições marginais identificado.', 20, y);
+                y += 4;
+            } else {
+                analysis.atencao.forEach(range => {
+                    const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
+                    doc.setFont(undefined, 'bold');
+                    doc.text(period, 20, y);
+                    doc.setFont(undefined, 'normal');
+                    if (range.reasons.length) {
+                        doc.setTextColor(120, 80, 0);
+                        doc.text(range.reasons.join('; '), 20, y + 3.5, { maxWidth: textWidth - 10 });
+                        doc.setTextColor(0, 0, 0);
+                    }
+                    y += 8;
+                });
+            }
+
+            // NÃO APLICAR section
+            y += 2;
+            doc.setFillColor(254, 242, 242);
+            doc.roundedRect(15, y, textWidth, 4, 1, 1, 'F');
+            doc.setFontSize(7);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(153, 27, 27);
+            doc.text('NÃO APLICAR', 20, y + 3);
+            y += 6;
+
+            doc.setFont(undefined, 'normal');
+            doc.setFontSize(6.5);
+            doc.setTextColor(0, 0, 0);
+            if (analysis.naoAplicar.length === 0) {
+                doc.text('Nenhum período com condições impeditivas identificado.', 20, y);
+                y += 4;
+            } else {
+                analysis.naoAplicar.forEach(range => {
+                    const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
+                    doc.setFont(undefined, 'bold');
+                    doc.text(period, 20, y);
+                    doc.setFont(undefined, 'normal');
+                    if (range.reasons.length) {
+                        doc.setTextColor(180, 30, 30);
+                        doc.text(range.reasons.join('; '), 20, y + 3.5, { maxWidth: textWidth - 10 });
+                        doc.setTextColor(0, 0, 0);
+                    }
+                    y += 8;
+                });
+            }
+
+            // Technical reference footer
+            const pageHeight = doc.internal.pageSize.getHeight();
+            doc.setFontSize(6);
+            doc.setTextColor(130, 130, 130);
+            doc.text('Referência técnica: Delta T ideal 2–8°C | Cautela 8–10°C | Evitar >10°C | Inversão térmica <2°C | Vento ideal 3–10 km/h', 15, pageHeight - 8);
+            doc.text('Análise gerada automaticamente com base nos dados meteorológicos. Consulte um engenheiro agrônomo para decisões finais.', 15, pageHeight - 4);
+            doc.setTextColor(0, 0, 0);
 
             doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('✅ PDF completo gerado com sucesso!', 'success');
@@ -1506,14 +1791,15 @@
                         label: 'Delta T (°C)',
                         data: deltaSeries,
                         borderColor: '#14b8a6',
-                        backgroundColor: 'rgba(20, 184, 166, 0.1)',
+                        backgroundColor: 'rgba(20, 184, 166, 0.15)',
                         fill: true,
                         tension: 0.4,
-                        borderWidth: 3,
-                        pointRadius: 5,
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        pointHoverRadius: 4,
                         pointBackgroundColor: '#14b8a6',
                         pointBorderColor: '#fff',
-                        pointBorderWidth: 2
+                        pointBorderWidth: 1
                     },
                     {
                         label: 'Ideal (2–8°C)',
@@ -1521,16 +1807,19 @@
                         borderColor: '#22c55e',
                         borderDash: [6, 4],
                         pointRadius: 0,
-                        borderWidth: 2,
-                        fill: false
+                        borderWidth: 1.5,
+                        fill: {
+                            target: '+1',
+                            above: 'rgba(34, 197, 94, 0.08)'
+                        }
                     },
                     {
-                        label: 'Inversão térmica (<2°C)',
+                        label: 'Inversão (<2°C)',
                         data: Array(hours.length).fill(2),
                         borderColor: '#0ea5e9',
                         borderDash: [4, 4],
                         pointRadius: 0,
-                        borderWidth: 2,
+                        borderWidth: 1.5,
                         fill: false
                     },
                     {
@@ -1539,7 +1828,7 @@
                         borderColor: '#f59e0b',
                         borderDash: [6, 4],
                         pointRadius: 0,
-                        borderWidth: 2,
+                        borderWidth: 1.5,
                         fill: false
                     },
                     {
@@ -1548,7 +1837,7 @@
                         borderColor: '#ef4444',
                         borderDash: [2, 4],
                         pointRadius: 0,
-                        borderWidth: 2,
+                        borderWidth: 1.5,
                         fill: false
                     }]
                 },
@@ -1556,21 +1845,36 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: true, position: 'top' },
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                font: { size: 10 },
+                                boxWidth: 14,
+                                boxHeight: 8,
+                                padding: 8,
+                                usePointStyle: true,
+                                pointStyle: 'line'
+                            }
+                        },
                         tooltip: {
                             backgroundColor: 'rgba(0,0,0,0.8)',
-                            padding: 12,
-                            titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 }
+                            padding: 8,
+                            titleFont: { size: 11, weight: 'bold' },
+                            bodyFont: { size: 10 }
                         }
                     },
                     scales: {
                         y: {
                             beginAtZero: true,
                             grid: { color: '#f5f5f4' },
-                            title: { display: true, text: 'Delta T (°C) — Ideal 2–8°C | Cautela 8–10°C | Evitar >10°C | Inversão <2°C' }
+                            title: { display: true, text: 'Delta T (°C)', font: { size: 10 } },
+                            ticks: { font: { size: 9 } }
                         },
-                        x: { grid: { display: false } }
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 30 }
+                        }
                     }
                 }
             });
@@ -1584,29 +1888,43 @@
                             label: 'Temperatura (°C)',
                             data: temperatureSeries,
                             borderColor: '#f59e0b',
-                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            backgroundColor: 'rgba(245, 158, 11, 0.08)',
                             fill: true,
                             tension: 0.4,
-                            borderWidth: 3,
+                            borderWidth: 2,
                             yAxisID: 'y',
-                            pointRadius: 5,
+                            pointRadius: 2,
+                            pointHoverRadius: 4,
                             pointBackgroundColor: '#f59e0b',
                             pointBorderColor: '#fff',
-                            pointBorderWidth: 2
+                            pointBorderWidth: 1
                         },
                         {
                             label: 'Umidade (%)',
                             data: humiditySeries,
                             borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.08)',
                             fill: true,
                             tension: 0.4,
-                            borderWidth: 3,
+                            borderWidth: 2,
                             yAxisID: 'y1',
-                            pointRadius: 5,
+                            pointRadius: 2,
+                            pointHoverRadius: 4,
                             pointBackgroundColor: '#3b82f6',
                             pointBorderColor: '#fff',
-                            pointBorderWidth: 2
+                            pointBorderWidth: 1
+                        },
+                        {
+                            type: 'bar',
+                            label: 'Chuva (mm)',
+                            data: precipSeries,
+                            backgroundColor: 'rgba(99, 102, 241, 0.5)',
+                            borderColor: '#6366f1',
+                            borderWidth: 1,
+                            yAxisID: 'y2',
+                            barPercentage: 0.6,
+                            categoryPercentage: 0.8,
+                            order: 1
                         }
                     ]
                 },
@@ -1615,12 +1933,22 @@
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: { display: true, position: 'top' },
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                font: { size: 10 },
+                                boxWidth: 14,
+                                boxHeight: 8,
+                                padding: 8,
+                                usePointStyle: false
+                            }
+                        },
                         tooltip: {
                             backgroundColor: 'rgba(0,0,0,0.8)',
-                            padding: 12,
-                            titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 }
+                            padding: 8,
+                            titleFont: { size: 11, weight: 'bold' },
+                            bodyFont: { size: 10 }
                         }
                     },
                     scales: {
@@ -1628,17 +1956,30 @@
                             type: 'linear',
                             display: true,
                             position: 'left',
-                            title: { display: true, text: 'Temperatura (°C)' },
-                            grid: { color: '#f5f5f4' }
+                            title: { display: true, text: 'Temperatura (°C)', font: { size: 10 } },
+                            grid: { color: '#f5f5f4' },
+                            ticks: { font: { size: 9 } }
                         },
                         y1: {
                             type: 'linear',
                             display: true,
                             position: 'right',
-                            title: { display: true, text: 'Umidade (%)' },
-                            grid: { drawOnChartArea: false }
+                            title: { display: true, text: 'Umidade (%)', font: { size: 10 } },
+                            grid: { drawOnChartArea: false },
+                            ticks: { font: { size: 9 } }
                         },
-                        x: { grid: { display: false } }
+                        y2: {
+                            type: 'linear',
+                            display: false,
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                            min: 0,
+                            afterDataLimits: (scale) => { scale.max = Math.max(scale.max || 1, 5); }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 8 }, maxRotation: 45, minRotation: 30 }
+                        }
                     }
                 }
             });
