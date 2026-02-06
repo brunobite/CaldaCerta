@@ -158,6 +158,7 @@ app.get('/api/inmet', async (req, res) => {
         relativehumidity_2m: humidity,
         windspeed_10m: windspeed,
         precipitation
+        windspeed_10m: windspeed
       }
     });
   } catch (error) {
