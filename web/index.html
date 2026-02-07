@@ -308,7 +308,7 @@
                     </div>
                     <div>
                         <label class="label-text">Dureza (µS/cm)</label>
-                        <input type="number" id="agua_dureza" class="input-box" placeholder="0" step="1" min="0">
+                        <input type="number" id="agua_dureza" class="input-box" placeholder="0" step="1" min="0" oninput="checkWaterHardness()">
                     </div>
                     <div>
                         <label class="label-text">Origem da Água</label>
@@ -321,6 +321,8 @@
                         </select>
                     </div>
                 </div>
+
+                <div id="dureza-alert-container" class="mt-2"></div>
 
                 <div>
                     <label class="label-text">Observações sobre a Água</label>
@@ -343,7 +345,7 @@
             <div class="card">
                 <div class="card card-compact mb-4">
                     <h4 class="font-bold text-sm text-slate-700 mb-3 uppercase">Fonte de Dados Meteorológicos</h4>
-                    <div class="grid grid-3">
+                    <div class="grid grid-2 mb-3">
                         <div>
                             <label class="label-text">Latitude</label>
                             <input type="number" id="clima_lat" class="input-box" placeholder="-23.55" step="0.0001" min="-90" max="90">
@@ -352,19 +354,16 @@
                             <label class="label-text">Longitude</label>
                             <input type="number" id="clima_lon" class="input-box" placeholder="-46.63" step="0.0001" min="-180" max="180">
                         </div>
-                        <div class="flex flex-col justify-between">
-                            <label class="label-text">Atualização</label>
-                            <div class="flex gap-2">
-                                <button type="button" class="btn btn-secondary btn-full" onclick="useCurrentLocation()">
-                                    <i class="fa-solid fa-location-crosshairs mr-1"></i>
-                                    Usar localização
-                                </button>
-                                <button type="button" class="btn btn-primary btn-full" onclick="refreshClimate()">
-                                    <i class="fa-solid fa-rotate mr-1"></i>
-                                    Atualizar
-                                </button>
-                            </div>
-                        </div>
+                    </div>
+                    <div class="grid grid-2">
+                        <button type="button" class="btn btn-secondary btn-full" onclick="useCurrentLocation()">
+                            <i class="fa-solid fa-location-crosshairs mr-1"></i>
+                            Usar localização
+                        </button>
+                        <button type="button" class="btn btn-primary btn-full" onclick="refreshClimate()">
+                            <i class="fa-solid fa-rotate mr-1"></i>
+                            Atualizar
+                        </button>
                     </div>
                     <p class="text-xs text-slate-500 mt-2">Dados preferenciais do INMET com fallback para Open-Meteo. Atualize para recalcular Delta T.</p>
                 </div>
@@ -376,7 +375,7 @@
                     <canvas id="chartDeltaT" height="200"></canvas>
                 </div>
 
-                <div class="data-table-wrapper">
+                <div class="data-table-wrapper" style="display:none;">
                     <table class="data-table" id="delta-table">
                         <thead>
                             <tr>
@@ -395,7 +394,7 @@
                 <div class="chart-container">
                     <canvas id="chartClima" height="200"></canvas>
                 </div>
-                <div class="data-table-wrapper">
+                <div class="data-table-wrapper" style="display:none;">
                     <table class="data-table" id="clima-table">
                         <thead>
                             <tr>
