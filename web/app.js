@@ -2216,6 +2216,75 @@
             );
         };
 
+        // ✅ BUSCA POR ESTADO / CIDADE
+        async function carregarEstados() {
+            const select = document.getElementById('clima_estado');
+            if (!select) return;
+            try {
+                const resp = await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome');
+                const estados = await resp.json();
+                estados.forEach(uf => {
+                    const opt = document.createElement('option');
+                    opt.value = uf.sigla;
+                    opt.textContent = uf.sigla + ' - ' + uf.nome;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.warn('Erro ao carregar estados:', e);
+            }
+        }
+
+        window.onEstadoChange = async () => {
+            const uf = document.getElementById('clima_estado').value;
+            const cidadeSelect = document.getElementById('clima_cidade');
+            cidadeSelect.innerHTML = '<option value="">Carregando...</option>';
+            if (!uf) {
+                cidadeSelect.innerHTML = '<option value="">Cidade</option>';
+                return;
+            }
+            try {
+                const resp = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);
+                const cidades = await resp.json();
+                cidadeSelect.innerHTML = '<option value="">Selecione a cidade</option>';
+                cidades.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.nome;
+                    opt.textContent = c.nome;
+                    cidadeSelect.appendChild(opt);
+                });
+            } catch (e) {
+                console.warn('Erro ao carregar cidades:', e);
+                cidadeSelect.innerHTML = '<option value="">Erro ao carregar</option>';
+            }
+        };
+
+        window.onCidadeChange = async () => {
+            const cidade = document.getElementById('clima_cidade').value;
+            const uf = document.getElementById('clima_estado').value;
+            if (!cidade || !uf) return;
+            try {
+                showToast('⏳ Buscando coordenadas...', 'success');
+                const resp = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cidade)}&count=5&language=pt&format=json`);
+                const data = await resp.json();
+                if (data.results && data.results.length > 0) {
+                    const match = data.results.find(r =>
+                        r.admin1 && r.admin1.toLowerCase().includes(uf.toLowerCase()) ||
+                        r.admin2 && r.admin2.toLowerCase().includes(uf.toLowerCase()) ||
+                        r.country_code === 'BR'
+                    ) || data.results[0];
+                    document.getElementById('clima_lat').value = match.latitude.toFixed(4);
+                    document.getElementById('clima_lon').value = match.longitude.toFixed(4);
+                    showToast(`✅ Coordenadas de ${cidade}/${uf} preenchidas.`, 'success');
+                    refreshClimate();
+                } else {
+                    showToast('❌ Cidade não encontrada na base de coordenadas.', 'error');
+                }
+            } catch (e) {
+                console.warn('Erro ao buscar coordenadas:', e);
+                showToast('❌ Erro ao buscar coordenadas da cidade.', 'error');
+            }
+        };
+
         // Toast
         function showToast(message, type = 'success') {
             const existing = document.querySelector('.toast');
@@ -2239,6 +2308,7 @@
 
             initBancosDados();
             loadHistory();
+            carregarEstados();
 
             document.getElementById('produto-banco').style.display = 'block';
             document.getElementById('produto-form').style.display = 'block';
