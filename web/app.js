@@ -840,6 +840,52 @@
             document.getElementById('res_rendimento').innerText = rendimento;
         };
 
+        // Alerta de dureza da água
+        window.checkWaterHardness = () => {
+            const container = document.getElementById('dureza-alert-container');
+            const dureza = parseFloat(document.getElementById('agua_dureza').value);
+            if (!container) return;
+
+            if (!Number.isFinite(dureza) || dureza <= 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let alertClass, icon, title, message;
+
+            if (dureza <= 150) {
+                alertClass = 'alert-success';
+                icon = 'fa-circle-check';
+                title = 'AGUA MOLE (0–150 µS/cm)';
+                message = 'Agua com baixa dureza. Condição favorável para a maioria das aplicações de defensivos.';
+            } else if (dureza <= 300) {
+                alertClass = 'alert-warning';
+                icon = 'fa-exclamation-circle';
+                title = 'AGUA MODERADAMENTE DURA (150–300 µS/cm)';
+                message = 'Dureza moderada. Pode reduzir a eficácia de alguns herbicidas (ex: glifosato). Considere o uso de adjuvantes sequestrantes.';
+            } else if (dureza <= 500) {
+                alertClass = 'alert-warning';
+                icon = 'fa-triangle-exclamation';
+                title = 'AGUA DURA (300–500 µS/cm)';
+                message = 'Água dura detectada. Recomenda-se uso de condicionadores de água ou adjuvantes para evitar perda de eficácia dos produtos.';
+            } else {
+                alertClass = 'alert-danger';
+                icon = 'fa-triangle-exclamation';
+                title = 'AGUA MUITO DURA (>500 µS/cm)';
+                message = 'Água muito dura! Alto risco de redução na eficácia dos defensivos. Uso de condicionador/adjuvante sequestrante é indispensável.';
+            }
+
+            container.innerHTML = `
+                <div class="alert ${alertClass}">
+                    <i class="fa-solid ${icon} alert-icon"></i>
+                    <div>
+                        <h4 class="font-bold mb-1">${title}</h4>
+                        <p style="font-size: 0.8rem;">${message}</p>
+                    </div>
+                </div>
+            `;
+        };
+
         // Atualizar observação do produto
         window.updateProductObservation = (productId, observacao) => {
             const product = products.find(p => p.id === productId);
@@ -1666,9 +1712,10 @@
             let leftY = y;
             let rightY = y;
 
-            const renderSection = ({ title, titleColor, bgColor, ranges, emptyText, reasonColor, formatReasons }, startX, startY) => {
+            const renderSection = ({ title, titleColor, bgColor, ranges, emptyText, reasonColor, formatReasons }, startX, startY, maxW) => {
+                const sectionWidth = maxW || columnWidth;
                 doc.setFillColor(...bgColor);
-                doc.roundedRect(startX, startY, columnWidth, 4, 1, 1, 'F');
+                doc.roundedRect(startX, startY, sectionWidth, 4, 1, 1, 'F');
                 doc.setFontSize(7);
                 doc.setFont(undefined, 'bold');
                 doc.setTextColor(...titleColor);
@@ -1680,20 +1727,24 @@
                 doc.setTextColor(0, 0, 0);
 
                 if (!ranges.length) {
-                    doc.text(emptyText, startX + 4, currentY, { maxWidth: columnWidth - 8 });
+                    doc.text(emptyText, startX + 4, currentY, { maxWidth: sectionWidth - 8 });
                     currentY += 4;
                 } else {
                     ranges.forEach(range => {
                         const period = range.start === range.end ? range.start : `${range.start} — ${range.end}`;
                         doc.setFont(undefined, 'bold');
                         doc.text(period, startX + 4, currentY);
+                        currentY += 3.5;
                         doc.setFont(undefined, 'normal');
                         if (range.reasons.length) {
                             doc.setTextColor(...reasonColor);
-                            doc.text(formatReasons(range.reasons), startX + 4, currentY + 3.5, { maxWidth: columnWidth - 8 });
+                            const reasonText = formatReasons(range.reasons);
+                            const splitLines = doc.splitTextToSize(reasonText, sectionWidth - 8);
+                            doc.text(splitLines, startX + 4, currentY);
+                            currentY += splitLines.length * 3;
                             doc.setTextColor(0, 0, 0);
                         }
-                        currentY += 8;
+                        currentY += 2;
                     });
                 }
 
@@ -1728,7 +1779,8 @@
                 rightY
             );
 
-            rightY = renderSection(
+            let naoAplicarY = Math.max(leftY, rightY) + 2;
+            naoAplicarY = renderSection(
                 {
                     title: 'NÃO APLICAR',
                     titleColor: [153, 27, 27],
@@ -1738,8 +1790,9 @@
                     reasonColor: [180, 30, 30],
                     formatReasons: (reasons) => reasons.join('; ')
                 },
-                rightX,
-                rightY + 2
+                leftX,
+                naoAplicarY,
+                textWidth
             );
 
             // Technical reference footer
