@@ -1,0 +1,293 @@
+/* ============================================
+   NAVBAR REDESIGN - Baseado na Estética do Logo CaldaCerta
+   ============================================ */
+
+/* Cores extraídas do logo */
+:root {
+    --logo-blue: #0f3e5c;
+    --logo-blue-light: #1a5a7a;
+    --logo-green-dark: #0f5a2b;
+    --logo-green: #1a7a3e;
+    --logo-green-light: #5cb85c;
+    --logo-leaf-light: #7ec850;
+}
+
+/* ============================================
+   NAVBAR - Estrutura Principal
+   ============================================ */
+
+nav {
+    background: linear-gradient(135deg, var(--logo-blue) 0%, var(--logo-blue-light) 100%);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 8px 32px rgba(15, 62, 92, 0.3);
+    border-bottom: 3px solid var(--logo-green);
+    padding: 0.8rem 0;
+}
+
+.nav-container {
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 0 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* ============================================
+   LOGO SECTION - Elemento Principal
+   ============================================ */
+
+.logo {
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: transform 0.3s ease;
+}
+
+.logo:hover {
+    transform: scale(1.05);
+}
+
+.brand-logo {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    line-height: 1;
+}
+
+.brand-mark {
+    width: 160px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.brand-mark-img {
+    width: 160px;
+    height: auto;
+    max-height: 40px;
+    object-fit: contain;
+    filter: brightness(1.1) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.brand-logo-large {
+    gap: 0.5rem;
+}
+
+.brand-logo-large .brand-mark {
+    width: 280px;
+    height: 70px;
+}
+
+.brand-logo-large .brand-mark-img {
+    width: 280px;
+    height: auto;
+    max-height: 70px;
+}
+
+.brand-name {
+    display: none;
+}
+
+/* ============================================
+   HEADER RIGHT - Botões e Badges
+   ============================================ */
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.header-user-compact {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.user-badge-compact {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.65rem;
+    color: white;
+    max-width: 110px;
+    white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.3s ease;
+}
+
+.user-badge-compact:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.admin-badge-header {
+    background: var(--logo-green);
+    padding: 0.15rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(26, 122, 62, 0.3);
+    transition: all 0.3s ease;
+}
+
+.admin-badge-header:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(26, 122, 62, 0.4);
+}
+
+/* ============================================
+   HEADER BUTTONS - Estilo Glassmorphism
+   ============================================ */
+
+.header-mode-btn {
+    font-size: 0.65rem;
+    background: rgba(255, 255, 255, 0.12);
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    font-family: 'Space Mono', monospace;
+    white-space: nowrap;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.header-mode-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.header-mode-btn:active {
+    transform: scale(0.98);
+}
+
+.header-logout-btn {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    cursor: pointer;
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    font-size: 0.7rem;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    backdrop-filter: blur(10px);
+}
+
+.header-logout-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.header-logout-btn:active {
+    transform: scale(0.98);
+}
+
+/* ============================================
+   RESPONSIVIDADE - Mobile
+   ============================================ */
+
+@media (max-width: 720px) {
+    nav {
+        padding: 0.6rem 0;
+    }
+
+    .nav-container {
+        gap: 0.5rem;
+    }
+
+    .brand-mark {
+        width: 120px;
+        height: 30px;
+    }
+
+    .brand-mark-img {
+        width: 120px;
+        max-height: 30px;
+    }
+
+    .brand-logo-large .brand-mark {
+        width: 200px;
+        height: 50px;
+    }
+
+    .brand-logo-large .brand-mark-img {
+        width: 200px;
+        max-height: 50px;
+    }
+
+    .header-right {
+        gap: 0.35rem;
+    }
+
+    .user-badge-compact {
+        max-width: 80px;
+        font-size: 0.6rem;
+        padding: 0.15rem 0.4rem;
+    }
+
+    .header-mode-btn {
+        font-size: 0.6rem;
+        padding: 0.15rem 0.4rem;
+    }
+
+    .header-logout-btn {
+        font-size: 0.65rem;
+        padding: 0.15rem 0.4rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-container {
+        gap: 0.3rem;
+    }
+
+    .brand-mark {
+        width: 100px;
+        height: 25px;
+    }
+
+    .brand-mark-img {
+        width: 100px;
+        max-height: 25px;
+    }
+
+    .user-badge-compact {
+        display: none;
+    }
+
+    .header-mode-btn {
+        font-size: 0.55rem;
+        padding: 0.1rem 0.3rem;
+    }
+
+    .header-logout-btn {
+        font-size: 0.6rem;
+        padding: 0.1rem 0.3rem;
+    }
+}

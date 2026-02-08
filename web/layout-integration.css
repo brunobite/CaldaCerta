@@ -1,0 +1,338 @@
+/* ============================================
+   INTEGRAÇÃO VISUAL - Layout com Navbar
+   ============================================ */
+
+/* Cores do logo para referência */
+:root {
+    --logo-blue: #0f3e5c;
+    --logo-blue-light: #1a5a7a;
+    --logo-green-dark: #0f5a2b;
+    --logo-green: #1a7a3e;
+    --logo-green-light: #5cb85c;
+}
+
+/* ============================================
+   CONTAINER PRINCIPAL
+   ============================================ */
+
+.container {
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 0.75rem;
+    padding-bottom: 6rem;
+}
+
+/* ============================================
+   CARDS E ELEMENTOS PRINCIPAIS
+   ============================================ */
+
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 16px rgba(15, 62, 92, 0.08);
+    border: 1px solid rgba(26, 122, 62, 0.1);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 8px 24px rgba(26, 122, 62, 0.12);
+    border-color: rgba(26, 122, 62, 0.2);
+}
+
+/* ============================================
+   MENU CARDS - Elementos de Ação
+   ============================================ */
+
+.menu-card {
+    background: linear-gradient(135deg, white 0%, #fafbfc 100%);
+    border: 2px solid rgba(26, 122, 62, 0.15);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.25rem;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.menu-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, var(--logo-green-light), var(--logo-green));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    border-radius: 12px;
+}
+
+.menu-card:hover::before {
+    opacity: 0.08;
+}
+
+.menu-card:hover {
+    border-color: var(--logo-green);
+    transform: translateY(-6px);
+    box-shadow: 0 12px 32px rgba(26, 122, 62, 0.2);
+}
+
+/* ============================================
+   ICON BOXES - Ícones de Ação
+   ============================================ */
+
+.icon-box {
+    width: 3rem;
+    height: 3rem;
+    background: linear-gradient(135deg, var(--logo-green-light), var(--logo-green));
+    color: white;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(26, 122, 62, 0.2);
+}
+
+.menu-card:hover .icon-box {
+    transform: scale(1.15) rotate(5deg);
+    box-shadow: 0 6px 16px rgba(26, 122, 62, 0.3);
+}
+
+.icon-box-green {
+    background: linear-gradient(135deg, #10b981, #059669);
+}
+
+/* ============================================
+   SEÇÃO HEADERS
+   ============================================ */
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 3px solid var(--logo-green);
+}
+
+.section-number {
+    background: linear-gradient(135deg, var(--logo-green-light), var(--logo-green));
+    color: white;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(26, 122, 62, 0.25);
+}
+
+/* ============================================
+   BOTÕES PRIMÁRIOS
+   ============================================ */
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--logo-green-light), var(--logo-green));
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(26, 122, 62, 0.25);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(26, 122, 62, 0.35);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+/* ============================================
+   BADGES E LABELS
+   ============================================ */
+
+.badge-primary {
+    background: rgba(26, 122, 62, 0.1);
+    color: var(--logo-green-dark);
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.badge-success {
+    background: rgba(26, 122, 62, 0.15);
+    color: var(--logo-green-dark);
+}
+
+/* ============================================
+   INPUTS E FORMULÁRIOS
+   ============================================ */
+
+.input-box {
+    padding: 0.6rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(26, 122, 62, 0.2);
+    font-family: 'Sora', sans-serif;
+    font-size: 0.875rem;
+    background: white;
+    color: var(--text);
+    transition: all 0.3s ease;
+}
+
+.input-box:focus {
+    outline: none;
+    border-color: var(--logo-green);
+    box-shadow: 0 0 0 3px rgba(26, 122, 62, 0.1);
+}
+
+.label-text {
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--logo-green-dark);
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+/* ============================================
+   PROGRESS BAR
+   ============================================ */
+
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(26, 122, 62, 0.1);
+    border-radius: 9999px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--logo-green-light), var(--logo-green));
+    transition: width 0.3s ease;
+    box-shadow: 0 0 8px rgba(26, 122, 62, 0.3);
+}
+
+/* ============================================
+   PRODUCT ITEMS - Elementos de Lista
+   ============================================ */
+
+.product-item {
+    background: white;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    border-left: 4px solid var(--logo-green);
+    box-shadow: 0 2px 8px rgba(26, 122, 62, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+    animation: slideIn 0.3s ease;
+    margin-bottom: 0.5rem;
+    cursor: move;
+    min-height: 50px;
+    touch-action: none;
+}
+
+.product-item:hover {
+    box-shadow: 0 4px 16px rgba(26, 122, 62, 0.15);
+    transform: translateX(4px);
+    border-left-color: var(--logo-green-light);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #999;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    color: rgba(26, 122, 62, 0.2);
+    margin-bottom: 1rem;
+}
+
+/* ============================================
+   RESPONSIVIDADE
+   ============================================ */
+
+@media (max-width: 720px) {
+    .card {
+        padding: 1rem;
+    }
+
+    .menu-card {
+        padding: 1rem;
+        gap: 1rem;
+    }
+
+    .icon-box {
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 1rem;
+    }
+
+    .section-number {
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 0.5rem;
+    }
+
+    .card {
+        padding: 0.75rem;
+        border-radius: 10px;
+    }
+
+    .menu-card {
+        flex-direction: column;
+        text-align: center;
+        padding: 1rem;
+    }
+
+    .menu-card:hover {
+        transform: translateY(-4px);
+    }
+}
