@@ -20,7 +20,13 @@
 };
 
     // Inicializar Firebase
-    firebase.initializeApp(firebaseConfig);
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+    } catch (error) {
+        console.error('❌ Erro ao inicializar Firebase:', error);
+    }
     
     // Criar referências globais
     window.auth = firebase.auth();
@@ -41,6 +47,9 @@
         } else {
             console.log('[Offline] Firebase desconectado - usando cache local');
         }
+    }, (error) => {
+        window._firebaseConnected = false;
+        console.error('❌ Erro ao monitorar conexão Firebase:', error);
     });
 
     console.log('🔥 Firebase inicializado com sucesso!');
@@ -356,7 +365,11 @@
             const base = getApiBase();
             const uidParam = !isUserAdmin && currentUserData ? `?uid=${encodeURIComponent(currentUserData.uid)}` : '';
             const url = `${base}/api/simulacoes${uidParam}`;
-            return fetchJson(url);
+            const data = await fetchJson(url);
+            if (!Array.isArray(data)) {
+                throw new Error('Resposta inválida da API de simulações');
+            }
+            return data;
         }
 
         async function loadHistoryFromFirebase() {
@@ -393,8 +406,26 @@
                 uid: currentUserData.uid,
                 ...data[key]
             }));
-            console.log(`✅ ${items.length} simulações carregadas do Firebase`);
-            return items;
+
+            if (items.length > 0) {
+                console.log(`✅ ${items.length} simulações carregadas do Firebase`);
+                return items;
+            }
+
+            const legacyRef = db.ref('simulacoes');
+            const legacySnapshot = await legacyRef.once('value');
+            const legacyData = legacySnapshot.val() || {};
+            const legacyItems = Object.entries(legacyData)
+                .filter(([, sim]) => sim && typeof sim === 'object' && (sim.userEmail || sim.uid))
+                .filter(([, sim]) => sim.userEmail === currentUserData.email || sim.uid === currentUserData.uid)
+                .map(([id, sim]) => ({
+                    id,
+                    uid: sim.uid || '',
+                    ...sim
+                }));
+
+            console.log(`✅ ${legacyItems.length} simulações carregadas do Firebase (legacy)`);
+            return legacyItems;
         }
 
         async function loadHistory() {
@@ -411,6 +442,14 @@
                 } catch (error) {
                     console.warn('⚠️ Falha ao carregar histórico do servidor, usando Firebase.', error);
                     historicalData = await loadHistoryFromFirebase();
+                }
+
+                if (historicalData.length === 0) {
+                    const firebaseData = await loadHistoryFromFirebase();
+                    if (firebaseData.length > 0) {
+                        console.warn('⚠️ Histórico vazio no servidor, usando Firebase.');
+                        historicalData = firebaseData;
+                    }
                 }
 
                 renderHistoryList(historicalData);
@@ -746,6 +785,12 @@
                     const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
                     const snapshot = await simRef.once('value');
                     item = snapshot.val();
+                }
+
+                if (!item) {
+                    const legacyRef = db.ref('simulacoes/' + id);
+                    const legacySnapshot = await legacyRef.once('value');
+                    item = legacySnapshot.val();
                 }
 
                 if (!item) {
@@ -2483,6 +2528,28 @@
         
         let currentUserData = null;
         let isUserAdmin = false;
+        let lastFirebaseReconnectAt = 0;
+
+        document.addEventListener('firebase-connection', (event) => {
+            if (!event?.detail?.connected) {
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastFirebaseReconnectAt < 3000) {
+                return;
+            }
+            lastFirebaseReconnectAt = now;
+
+            if (currentUserData) {
+                if (typeof loadHistory === 'function') {
+                    loadHistory();
+                }
+                if (typeof initBancosDados === 'function') {
+                    initBancosDados();
+                }
+            }
+        });
 
         // ========================================
         // FUNÇÕES DE AUTENTICAÇÃO
@@ -2608,10 +2675,21 @@
                     document.getElementById('auth-overlay').classList.add('hidden');
                     document.getElementById('main-app').classList.add('show');
                     
-                    // Manter dados sincronizados para offline
-                    db.ref('simulacoes/' + user.uid).keepSynced(true);
-                    db.ref('produtos/' + user.uid).keepSynced(true);
-                    db.ref('users/' + user.uid).keepSynced(true);
+                    // Manter dados sincronizados para offline (quando suportado)
+                    const tryKeepSynced = (refPath) => {
+                        try {
+                            const ref = db.ref(refPath);
+                            if (typeof ref.keepSynced === 'function') {
+                                ref.keepSynced(true);
+                            }
+                        } catch (syncError) {
+                            console.warn('⚠️ keepSynced não suportado no Firebase Web:', syncError);
+                        }
+                    };
+
+                    tryKeepSynced('simulacoes/' + user.uid);
+                    tryKeepSynced('produtos/' + user.uid);
+                    tryKeepSynced('users/' + user.uid);
 
                     // Inicializar sistema
                     if (typeof initBancosDados === 'function') {
