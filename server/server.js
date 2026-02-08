@@ -144,6 +144,17 @@ function buildWeatherCacheKey(lat, lon, units, lang) {
   return `${latKey}:${lonKey}:${units}:${lang}`;
 }
 
+function computeDewPoint(temperature, humidity) {
+  if (!Number.isFinite(temperature) || !Number.isFinite(humidity) || humidity <= 0) {
+    return null;
+  }
+  const a = 17.27;
+  const b = 237.7;
+  const alpha = ((a * temperature) / (b + temperature)) + Math.log(humidity / 100);
+  const dewPoint = (b * alpha) / (a - alpha);
+  return Number.isFinite(dewPoint) ? Number(dewPoint.toFixed(2)) : null;
+}
+
 function getCachedWeather(cacheKey) {
   const cached = weatherCache.get(cacheKey);
   if (!cached) return null;
@@ -188,6 +199,22 @@ function buildHourlySeriesFromOneCall(data) {
     windspeed_10m: hourly.map((item) => (Number.isFinite(item.wind_speed) ? item.wind_speed * 3.6 : 0)),
     precipitation: hourly.map((item) => item.rain?.['1h'] ?? item.snow?.['1h'] ?? 0),
   };
+}
+
+function buildHourlyListFromSeries(series) {
+  if (!series?.time?.length) return [];
+  return series.time.map((time, idx) => {
+    const temp = Number(series.temperature_2m?.[idx] ?? 0);
+    const humidity = Number(series.relativehumidity_2m?.[idx] ?? 0);
+    return {
+      dt: Math.floor(new Date(time).getTime() / 1000),
+      temp,
+      humidity,
+      wind_speed: Number(series.windspeed_10m?.[idx] ?? 0),
+      precipitation: Number(series.precipitation?.[idx] ?? 0),
+      dew_point: computeDewPoint(temp, humidity),
+    };
+  });
 }
 
 function buildHourlySeriesFromForecast(list = [], timezoneOffset = 0) {
@@ -263,6 +290,8 @@ app.get('/api/weather', async (req, res) => {
       lat,
       lon,
       city,
+      state,
+      country = 'BR',
       units = 'metric',
       lang = 'pt_br',
     } = req.query;
@@ -282,7 +311,11 @@ app.get('/api/weather', async (req, res) => {
         return;
       }
 
-      const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${OPENWEATHER_API_KEY}`;
+      const hasComma = city.includes(',');
+      const locationQuery = hasComma
+        ? city
+        : [city, state, country].filter(Boolean).join(', ');
+      const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(locationQuery)}&limit=1&appid=${OPENWEATHER_API_KEY}`;
       const geoData = await fetchJson(geoUrl);
       const location = Array.isArray(geoData) ? geoData[0] : null;
 
@@ -323,6 +356,7 @@ app.get('/api/weather', async (req, res) => {
         location.name = oneCallData.timezone;
       }
 
+      const hourlySeries = buildHourlySeriesFromOneCall(oneCallData);
       payload = {
         source: 'openweathermap',
         location,
@@ -337,7 +371,8 @@ app.get('/api/weather', async (req, res) => {
           icon: oneCallData.current?.weather?.[0]?.icon || '',
         },
         daily: normalizeOpenWeatherDaily(oneCallData.daily || []),
-        hourly: buildHourlySeriesFromOneCall(oneCallData),
+        hourly: buildHourlyListFromSeries(hourlySeries),
+        hourly_series: hourlySeries,
       };
     } catch (oneCallError) {
       console.log(`OneCall 3.0 indisponível (${oneCallError.statusCode || oneCallError.message}), usando fallback 2.5`);
@@ -354,6 +389,7 @@ app.get('/api/weather', async (req, res) => {
       }
 
       const timezoneOffset = forecastData?.city?.timezone || 0;
+      const hourlySeries = buildHourlySeriesFromForecast(forecastData.list || [], timezoneOffset);
       payload = {
         source: 'openweathermap',
         location,
@@ -368,7 +404,8 @@ app.get('/api/weather', async (req, res) => {
           icon: currentData.weather?.[0]?.icon || '',
         },
         daily: buildDailyFromForecast(forecastData.list || [], timezoneOffset),
-        hourly: buildHourlySeriesFromForecast(forecastData.list || [], timezoneOffset),
+        hourly: buildHourlyListFromSeries(hourlySeries),
+        hourly_series: hourlySeries,
       };
     }
 
