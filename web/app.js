@@ -2624,6 +2624,12 @@
                     if (isUserAdmin) {
                         document.getElementById('admin-badge-display').style.display = 'inline-block';
                     }
+
+                    // Atualizar footer com informações do usuário
+                    const footerName = document.getElementById('user-name-footer');
+                    const footerEmail = document.getElementById('user-email-footer');
+                    if (footerName) footerName.textContent = userData?.name || 'Usuário';
+                    if (footerEmail) footerEmail.textContent = user.email;
                     
                     // Esconder login, mostrar app
                     document.getElementById('auth-overlay').classList.add('hidden');
