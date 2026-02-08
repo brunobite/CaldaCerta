@@ -2504,6 +2504,28 @@
         
         let currentUserData = null;
         let isUserAdmin = false;
+        let lastFirebaseReconnectAt = 0;
+
+        document.addEventListener('firebase-connection', (event) => {
+            if (!event?.detail?.connected) {
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastFirebaseReconnectAt < 3000) {
+                return;
+            }
+            lastFirebaseReconnectAt = now;
+
+            if (currentUserData) {
+                if (typeof loadHistory === 'function') {
+                    loadHistory();
+                }
+                if (typeof initBancosDados === 'function') {
+                    initBancosDados();
+                }
+            }
+        });
 
         // ========================================
         // FUNÇÕES DE AUTENTICAÇÃO
