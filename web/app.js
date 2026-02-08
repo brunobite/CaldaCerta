@@ -406,8 +406,26 @@
                 uid: currentUserData.uid,
                 ...data[key]
             }));
-            console.log(`✅ ${items.length} simulações carregadas do Firebase`);
-            return items;
+
+            if (items.length > 0) {
+                console.log(`✅ ${items.length} simulações carregadas do Firebase`);
+                return items;
+            }
+
+            const legacyRef = db.ref('simulacoes');
+            const legacySnapshot = await legacyRef.once('value');
+            const legacyData = legacySnapshot.val() || {};
+            const legacyItems = Object.entries(legacyData)
+                .filter(([, sim]) => sim && typeof sim === 'object' && (sim.userEmail || sim.uid))
+                .filter(([, sim]) => sim.userEmail === currentUserData.email || sim.uid === currentUserData.uid)
+                .map(([id, sim]) => ({
+                    id,
+                    uid: sim.uid || '',
+                    ...sim
+                }));
+
+            console.log(`✅ ${legacyItems.length} simulações carregadas do Firebase (legacy)`);
+            return legacyItems;
         }
 
         async function loadHistory() {
@@ -767,6 +785,12 @@
                     const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
                     const snapshot = await simRef.once('value');
                     item = snapshot.val();
+                }
+
+                if (!item) {
+                    const legacyRef = db.ref('simulacoes/' + id);
+                    const legacySnapshot = await legacyRef.once('value');
+                    item = legacySnapshot.val();
                 }
 
                 if (!item) {
@@ -2657,10 +2681,21 @@
                     document.getElementById('auth-overlay').classList.add('hidden');
                     document.getElementById('main-app').classList.add('show');
                     
-                    // Manter dados sincronizados para offline
-                    db.ref('simulacoes/' + user.uid).keepSynced(true);
-                    db.ref('produtos/' + user.uid).keepSynced(true);
-                    db.ref('users/' + user.uid).keepSynced(true);
+                    // Manter dados sincronizados para offline (quando suportado)
+                    const tryKeepSynced = (refPath) => {
+                        try {
+                            const ref = db.ref(refPath);
+                            if (typeof ref.keepSynced === 'function') {
+                                ref.keepSynced(true);
+                            }
+                        } catch (syncError) {
+                            console.warn('⚠️ keepSynced não suportado no Firebase Web:', syncError);
+                        }
+                    };
+
+                    tryKeepSynced('simulacoes/' + user.uid);
+                    tryKeepSynced('produtos/' + user.uid);
+                    tryKeepSynced('users/' + user.uid);
 
                     // Inicializar sistema
                     if (typeof initBancosDados === 'function') {
