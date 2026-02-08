@@ -2326,6 +2326,22 @@
             return Number((temperature - dewPoint).toFixed(2));
         }
 
+        function computeDewPoint(temperature, humidity) {
+            const a = 17.27;
+            const b = 237.7;
+            const alpha = ((a * temperature) / (b + temperature)) + Math.log(humidity / 100);
+            return Number(((b * alpha) / (a - alpha)).toFixed(2));
+        }
+
+        function formatLocalHourlyLabel(time) {
+            if (!time) return '';
+            const [datePart, timePart] = time.split('T');
+            if (!datePart || !timePart) return time;
+            const [year, month, day] = datePart.split('-');
+            if (!year || !month || !day) return time;
+            return `${day}/${month} ${timePart.slice(0, 5)}`;
+        }
+
         function normalizeHourlySeries(data) {
             if (Array.isArray(data?.hourly) && data.hourly.length) {
                 const time = data.hourly.map((item) => item.time || (item.dt ? new Date(item.dt * 1000).toISOString() : null));
@@ -2336,10 +2352,10 @@
                 return {
                     time,
                     temperature_2m: data.hourly.map((item) => Number(item.temperature ?? item.temp ?? 0)),
-                    relativehumidity_2m: data.hourly.map((item) => Number(item.humidity ?? 0)),
-                    windspeed_10m: data.hourly.map((item) => Number(item.wind_speed ?? 0)),
+                    relativehumidity_2m: data.hourly.map((item) => Number(item.humidity ?? item.relative_humidity ?? 0)),
+                    windspeed_10m: data.hourly.map((item) => Number(item.wind_speed ?? item.wind_speed_10m ?? 0)),
                     precipitation: data.hourly.map((item) => Number(item.precipitation ?? 0)),
-                    dew_point: data.hourly.map((item) => Number(item.dew_point ?? 0)),
+                    dew_point: data.hourly.map((item) => Number(item.dew_point ?? item.dew_point_2m ?? 0)),
                     deltaT,
                 };
             }
@@ -2348,31 +2364,27 @@
             return null;
         }
 
-        async function fetchWeatherData({ latitude, longitude, city, state, country }) {
-            const params = [];
-            const addParam = (key, value) => {
-                if (value === undefined || value === null || value === '') return;
-                params.push(`${key}=${encodeURIComponent(String(value))}`);
-            };
-            if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-                addParam('lat', latitude);
-                addParam('lon', longitude);
+        async function geocodeOpenMeteo(city, state) {
+            const name = `${city}, ${state}, BR`;
+            const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=10&language=pt&format=json`;
+            let response;
+            try {
+                response = await fetch(url);
+            } catch (error) {
+                const networkError = new Error('Serviço de clima indisponível no momento.');
+                networkError.userMessage = '❌ Serviço de clima indisponível no momento.';
+                networkError.originalError = error;
+                throw networkError;
             }
-            if (city) {
-                addParam('city', city);
+            if (!response.ok) {
+                throw new Error('Falha ao obter dados de geolocalização.');
             }
-            if (state) {
-                addParam('state', state);
-            }
-            if (country) {
-                addParam('country', country);
-            }
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
-            addParam('hours', CLIMATE_HOURS);
-            addParam('tz', timezone);
+            const data = await response.json();
+            return data?.results?.[0] || null;
+        }
 
-            const base = getApiBase();
-            const url = `${base}/api/weather?${params.join('&')}`;
+        async function fetchOpenMeteoForecast({ latitude, longitude, startDate }) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&hourly=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,dew_point_2m&forecast_days=2&timezone=America%2FSao_Paulo`;
             let response;
             try {
                 response = await fetch(url);
@@ -2385,7 +2397,48 @@
             if (!response.ok) {
                 throw new Error('Falha ao obter dados meteorológicos.');
             }
-            return response.json();
+            const data = await response.json();
+            const hourly = data?.hourly;
+            const times = hourly?.time || [];
+            const temperatures = hourly?.temperature_2m || [];
+            const humidity = hourly?.relative_humidity_2m || [];
+            const precipitation = hourly?.precipitation || [];
+            const windSpeed = hourly?.wind_speed_10m || [];
+            const dewPoint = hourly?.dew_point_2m || [];
+            const start = startDate ?? new Date();
+            const startIndex = Math.max(times.findIndex(t => new Date(t) >= start), 0);
+
+            const hourlyData = Array.from({ length: CLIMATE_HOURS }, (_, idx) => {
+                const index = startIndex + idx;
+                const tempValue = Number(temperatures[index] ?? 0);
+                const humidityValue = Number(humidity[index] ?? 0);
+                const dewPointValue = Number(dewPoint[index]);
+                const calculatedDewPoint = Number.isFinite(dewPointValue)
+                    ? dewPointValue
+                    : computeDewPoint(tempValue, humidityValue || 50);
+
+                return {
+                    time: times[index],
+                    temperature: tempValue,
+                    humidity: humidityValue,
+                    precipitation: Number(precipitation[index] ?? 0),
+                    wind_speed: Number(windSpeed[index] ?? 0),
+                    dew_point: calculatedDewPoint,
+                    deltaT: Number.isFinite(tempValue)
+                        ? Number((tempValue - calculatedDewPoint).toFixed(2))
+                        : null
+                };
+            }).filter(item => item.time);
+
+            return {
+                hourly: hourlyData,
+                location: {
+                    lat: data?.latitude,
+                    lon: data?.longitude,
+                    timezone: data?.timezone || 'America/Sao_Paulo'
+                },
+                source: 'open-meteo'
+            };
         }
 
         function buildFallbackHourlyData(data, startDate) {
@@ -2418,6 +2471,7 @@
             const humidity = hourlyData?.relativehumidity_2m || [];
             const winds = hourlyData?.windspeed_10m || [];
             const precipitation = hourlyData?.precipitation || [];
+            const dewPoints = hourlyData?.dew_point || [];
             const deltaTSeries = hourlyData?.deltaT || [];
             if (!times.length) return null;
 
@@ -2431,25 +2485,17 @@
             const sliceHumidity = humidity.slice(startIndex, endIndex);
             const sliceWinds = winds.slice(startIndex, endIndex);
             const slicePrecip = precipitation.slice(startIndex, endIndex);
+            const sliceDewPoints = dewPoints.slice(startIndex, endIndex);
             const sliceDeltaT = deltaTSeries.slice(startIndex, endIndex);
 
-            const locationTimezone = data?.location?.timezone || 'America/Sao_Paulo';
-            const labelFormatter = new Intl.DateTimeFormat('pt-BR', {
-                day: '2-digit',
-                month: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: locationTimezone
-            });
-            const labels = sliceTimes.map((time) => {
-                if (!time) return '';
-                const date = new Date(time);
-                if (Number.isNaN(date.getTime())) return time;
-                return labelFormatter.format(date);
-            });
+            const labels = sliceTimes.map((time) => formatLocalHourlyLabel(time));
             const deltaT = sliceTemps.map((temp, idx) => {
                 const provided = Number(sliceDeltaT[idx]);
                 if (Number.isFinite(provided)) return provided;
+                const dewPointValue = Number(sliceDewPoints[idx]);
+                if (Number.isFinite(dewPointValue)) {
+                    return Number((temp - dewPointValue).toFixed(2));
+                }
                 return computeDeltaT(temp, sliceHumidity[idx] ?? 50);
             });
 
@@ -2479,7 +2525,7 @@
 
             try {
                 showToast('⏳ Buscando dados meteorológicos...', 'success');
-                const data = await fetchWeatherData({ latitude, longitude });
+                const data = await fetchOpenMeteoForecast({ latitude, longitude, startDate: applicationDate });
                 const series = buildClimateSeries(data, applicationDate);
                 if (!series) {
                     showToast('❌ Dados meteorológicos indisponíveis.', 'error');
@@ -2564,14 +2610,14 @@
             if (!cidade || !uf) return;
             try {
                 showToast('⏳ Buscando coordenadas...', 'success');
-                const data = await fetchWeatherData({ city: cidade, state: uf, country: 'BR' });
-                if (data?.location?.lat && data?.location?.lon) {
-                    document.getElementById('clima_lat').value = Number(data.location.lat).toFixed(4);
-                    document.getElementById('clima_lon').value = Number(data.location.lon).toFixed(4);
+                const location = await geocodeOpenMeteo(cidade, uf);
+                if (location?.latitude && location?.longitude) {
+                    document.getElementById('clima_lat').value = Number(location.latitude).toFixed(4);
+                    document.getElementById('clima_lon').value = Number(location.longitude).toFixed(4);
                     showToast(`✅ Coordenadas de ${cidade}/${uf} preenchidas.`, 'success');
                     refreshClimate();
                 } else {
-                    showToast('❌ Cidade não encontrada na base de coordenadas.', 'error');
+                    showToast('❌ Local não encontrado.', 'error');
                 }
             } catch (e) {
                 console.warn('Erro ao buscar coordenadas:', e);
