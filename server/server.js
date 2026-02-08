@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const fs = require('fs').promises;
 const http = require('http');
@@ -8,6 +9,9 @@ const app = express();
 
 const DATA_DIR = path.join(__dirname, 'data');
 const SIMULACOES_PATH = path.join(DATA_DIR, 'simulacoes.json');
+const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY;
+const WEATHER_CACHE_TTL_MS = Number(process.env.WEATHER_CACHE_TTL_MS) || 3 * 60 * 1000;
+const weatherCache = new Map();
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -134,6 +138,112 @@ function formatDateISO(date) {
   return date.toISOString().split('T')[0];
 }
 
+function buildWeatherCacheKey(lat, lon, units, lang) {
+  const latKey = Number(lat).toFixed(4);
+  const lonKey = Number(lon).toFixed(4);
+  return `${latKey}:${lonKey}:${units}:${lang}`;
+}
+
+function getCachedWeather(cacheKey) {
+  const cached = weatherCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    weatherCache.delete(cacheKey);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setCachedWeather(cacheKey, payload) {
+  weatherCache.set(cacheKey, {
+    expiresAt: Date.now() + WEATHER_CACHE_TTL_MS,
+    payload,
+  });
+}
+
+function buildLocationName(location) {
+  if (!location) return 'Localização desconhecida';
+  return [location.name, location.state, location.country].filter(Boolean).join(', ');
+}
+
+function normalizeOpenWeatherDaily(days = []) {
+  return days.map((day) => ({
+    dt: day.dt,
+    temp_min: day.temp?.min ?? day.temp_min,
+    temp_max: day.temp?.max ?? day.temp_max,
+    description: day.weather?.[0]?.description || '',
+    icon: day.weather?.[0]?.icon || '',
+    pop: day.pop ?? 0,
+  }));
+}
+
+function buildHourlySeriesFromOneCall(data) {
+  const timezoneOffset = data.timezone_offset || 0;
+  const hourly = data.hourly || [];
+  if (!hourly.length) return null;
+  return {
+    time: hourly.map((item) => new Date((item.dt + timezoneOffset) * 1000).toISOString()),
+    temperature_2m: hourly.map((item) => item.temp),
+    relativehumidity_2m: hourly.map((item) => item.humidity),
+    windspeed_10m: hourly.map((item) => (Number.isFinite(item.wind_speed) ? item.wind_speed * 3.6 : 0)),
+    precipitation: hourly.map((item) => item.rain?.['1h'] ?? item.snow?.['1h'] ?? 0),
+  };
+}
+
+function buildHourlySeriesFromForecast(list = [], timezoneOffset = 0) {
+  if (!list.length) return null;
+  return {
+    time: list.map((item) => new Date((item.dt + timezoneOffset) * 1000).toISOString()),
+    temperature_2m: list.map((item) => item.main?.temp ?? 0),
+    relativehumidity_2m: list.map((item) => item.main?.humidity ?? 0),
+    windspeed_10m: list.map((item) => (Number.isFinite(item.wind?.speed) ? item.wind.speed * 3.6 : 0)),
+    precipitation: list.map((item) => item.rain?.['3h'] ?? item.snow?.['3h'] ?? 0),
+  };
+}
+
+function buildDailyFromForecast(list = [], timezoneOffset = 0) {
+  const grouped = new Map();
+  list.forEach((item) => {
+    const localDate = new Date((item.dt + timezoneOffset) * 1000).toISOString().split('T')[0];
+    if (!grouped.has(localDate)) {
+      grouped.set(localDate, []);
+    }
+    grouped.get(localDate).push(item);
+  });
+
+  return Array.from(grouped.entries()).map(([dateStr, items]) => {
+    let tempMin = Number.POSITIVE_INFINITY;
+    let tempMax = Number.NEGATIVE_INFINITY;
+    let pop = 0;
+    let bestItem = items[0];
+    let bestScore = Infinity;
+
+    items.forEach((item) => {
+      const min = item.main?.temp_min ?? item.main?.temp ?? 0;
+      const max = item.main?.temp_max ?? item.main?.temp ?? 0;
+      tempMin = Math.min(tempMin, min);
+      tempMax = Math.max(tempMax, max);
+      pop = Math.max(pop, item.pop ?? 0);
+
+      const localHour = new Date((item.dt + timezoneOffset) * 1000).getUTCHours();
+      const score = Math.abs(localHour - 12);
+      if (score < bestScore) {
+        bestScore = score;
+        bestItem = item;
+      }
+    });
+
+    return {
+      dt: bestItem?.dt || Math.floor(new Date(`${dateStr}T12:00:00Z`).getTime() / 1000) - timezoneOffset,
+      temp_min: tempMin,
+      temp_max: tempMax,
+      description: bestItem.weather?.[0]?.description || '',
+      icon: bestItem.weather?.[0]?.icon || '',
+      pop,
+    };
+  });
+}
+
 // 🔧 CONFIGURAÇÃO PARA SERVIR O FRONTEND DA PASTA 'web/'
 
 // 1. Servir arquivos estáticos da pasta 'web'
@@ -145,6 +255,135 @@ app.use(express.static(__dirname));
 // 🔧 API endpoints
 app.get('/api/status', (req, res) => {
   res.json({ status: 'OK', message: 'CaldaCerta Pro Online' });
+});
+
+app.get('/api/weather', async (req, res) => {
+  try {
+    const {
+      lat,
+      lon,
+      city,
+      units = 'metric',
+      lang = 'pt_br',
+    } = req.query;
+
+    if (!OPENWEATHER_API_KEY) {
+      res.status(500).json({ error: 'OPENWEATHER_API_KEY não configurada no servidor.' });
+      return;
+    }
+
+    let latitude = Number(lat);
+    let longitude = Number(lon);
+    let locationName = null;
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      if (!city) {
+        res.status(400).json({ error: 'Informe lat/lon ou city.' });
+        return;
+      }
+
+      const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(city)}&limit=1&appid=${OPENWEATHER_API_KEY}`;
+      const geoData = await fetchJson(geoUrl);
+      const location = Array.isArray(geoData) ? geoData[0] : null;
+
+      if (!location) {
+        res.status(404).json({ error: 'Cidade não encontrada.' });
+        return;
+      }
+
+      latitude = Number(location.lat);
+      longitude = Number(location.lon);
+      locationName = buildLocationName(location);
+    }
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      res.status(400).json({ error: 'Latitude e longitude inválidas.' });
+      return;
+    }
+
+    const cacheKey = buildWeatherCacheKey(latitude, longitude, units, lang);
+    const cached = getCachedWeather(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
+    const location = {
+      name: locationName || `Lat ${latitude.toFixed(2)}, Lon ${longitude.toFixed(2)}`,
+      lat: latitude,
+      lon: longitude,
+    };
+
+    let payload;
+
+    try {
+      const oneCallUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&exclude=minutely,alerts&appid=${OPENWEATHER_API_KEY}`;
+      const oneCallData = await fetchJson(oneCallUrl);
+      if (!locationName && oneCallData?.timezone) {
+        location.name = oneCallData.timezone;
+      }
+
+      payload = {
+        source: 'openweathermap',
+        location,
+        current: {
+          temp: oneCallData.current?.temp,
+          feels_like: oneCallData.current?.feels_like,
+          humidity: oneCallData.current?.humidity,
+          wind_speed: Number.isFinite(oneCallData.current?.wind_speed)
+            ? oneCallData.current.wind_speed * 3.6
+            : 0,
+          description: oneCallData.current?.weather?.[0]?.description || '',
+          icon: oneCallData.current?.weather?.[0]?.icon || '',
+        },
+        daily: normalizeOpenWeatherDaily(oneCallData.daily || []),
+        hourly: buildHourlySeriesFromOneCall(oneCallData),
+      };
+    } catch (error) {
+      if (![401, 403, 404].includes(error.statusCode)) {
+        throw error;
+      }
+
+      const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&appid=${OPENWEATHER_API_KEY}`;
+      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&appid=${OPENWEATHER_API_KEY}`;
+      const [currentData, forecastData] = await Promise.all([
+        fetchJson(currentUrl),
+        fetchJson(forecastUrl),
+      ]);
+
+      if (!locationName) {
+        location.name = currentData?.name || forecastData?.city?.name || location.name;
+      }
+
+      const timezoneOffset = forecastData?.city?.timezone || 0;
+      payload = {
+        source: 'openweathermap',
+        location,
+        current: {
+          temp: currentData.main?.temp,
+          feels_like: currentData.main?.feels_like,
+          humidity: currentData.main?.humidity,
+          wind_speed: Number.isFinite(currentData.wind?.speed)
+            ? currentData.wind.speed * 3.6
+            : 0,
+          description: currentData.weather?.[0]?.description || '',
+          icon: currentData.weather?.[0]?.icon || '',
+        },
+        daily: buildDailyFromForecast(forecastData.list || [], timezoneOffset),
+        hourly: buildHourlySeriesFromForecast(forecastData.list || [], timezoneOffset),
+      };
+    }
+
+    setCachedWeather(cacheKey, payload);
+    res.json(payload);
+  } catch (error) {
+    console.error('Erro ao consultar OpenWeatherMap:', error);
+    const status = error.statusCode || 502;
+    const message = status === 429
+      ? 'Limite de requisições do OpenWeatherMap atingido. Tente novamente em instantes.'
+      : 'Falha ao consultar OpenWeatherMap.';
+    res.status(status).json({ error: message });
+  }
 });
 
 app.get('/api/inmet', async (req, res) => {

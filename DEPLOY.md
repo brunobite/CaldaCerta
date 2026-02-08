@@ -23,7 +23,17 @@ cd server
 npm install
 ```
 
-3. Configure a porta (opcional):
+3. Configure variáveis de ambiente:
+
+No servidor/Render, configure:
+
+```bash
+OPENWEATHER_API_KEY=SEU_TOKEN_AQUI
+# Opcional: cache em ms (padrão 180000 = 3 min)
+WEATHER_CACHE_TTL_MS=180000
+```
+
+4. Configure a porta (opcional):
 
 O servidor já usa a variável `PORT` com fallback para `10000`.
 
@@ -31,13 +41,13 @@ O servidor já usa a variável `PORT` com fallback para `10000`.
 export PORT=10000
 ```
 
-4. Inicie o servidor:
+5. Inicie o servidor:
 
 ```bash
 npm start
 ```
 
-5. Acesse no navegador:
+6. Acesse no navegador:
 
 ```
 http://<SEU_HOST>:<PORT>
@@ -48,3 +58,4 @@ http://<SEU_HOST>:<PORT>
 - O frontend está na pasta `web/` e é servido pelo Express.
 - Se você usa um provedor (Render/Railway/VM), use o comando de start acima.
 - As credenciais do Firebase continuam carregadas pelo frontend em `web/app.js`.
+- No Render, adicione `OPENWEATHER_API_KEY` nas Environment Variables do serviço.
