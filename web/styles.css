@@ -1,9 +1,9 @@
 :root {
-            --primary: #0f766e;
-            --primary-dark: #065f46;
-            --primary-light: #14b8a6;
-            --accent: #f59e0b;
-            --bg: #fafaf9;
+            --primary: #2f9f4a;
+            --primary-dark: #1f7a3b;
+            --primary-light: #4cc36b;
+            --accent: #1f4e8c;
+            --bg: #ffffff;
             --card: #ffffff;
             --text: #0c0a09;
             --text-muted: #78716c;
@@ -21,7 +21,7 @@
 
         body {
             font-family: 'Sora', sans-serif;
-            background: linear-gradient(135deg, #fafaf9 0%, #f5f5f4 100%);
+            background: #ffffff;
             color: var(--text);
             min-height: 100vh;
             line-height: 1.6;
@@ -465,12 +465,11 @@
 
         /* Navigation */
         nav {
-            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-            backdrop-filter: blur(10px);
+            background: white;
             position: sticky;
             top: 0;
             z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-bottom: 1px solid var(--border);
         }
 
         .nav-container {
@@ -488,6 +487,55 @@
             font-size: 1.5rem;
             letter-spacing: -0.02em;
             cursor: pointer;
+        }
+
+        .brand-logo {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+            line-height: 1;
+        }
+
+        .brand-logo-large {
+            gap: 0.5rem;
+        }
+
+        .brand-mark {
+            width: 40px;
+            height: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .brand-logo-large .brand-mark {
+            width: 56px;
+            height: 56px;
+        }
+
+        .brand-mark svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .brand-name {
+            font-family: 'Sora', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-logo-large .brand-name {
+            font-size: 2rem;
+        }
+
+        .brand-blue {
+            color: var(--accent);
+        }
+
+        .brand-green {
+            color: var(--primary);
         }
 
         .user-badge {
@@ -775,7 +823,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            background: #ffffff;
             z-index: 10000;
             display: flex;
             align-items: center;
@@ -791,10 +839,11 @@
             background: white;
             padding: 3rem;
             border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 450px;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+            max-width: 460px;
             width: 100%;
             animation: fadeInScale 0.5s ease;
+            border: 1px solid #eef2f7;
         }
 
         @keyframes fadeInScale {
@@ -882,16 +931,17 @@
         }
 
         .user-badge-compact {
-            background: rgba(255,255,255,0.2);
+            background: #f1f5f9;
             padding: 0.2rem 0.5rem;
             border-radius: 6px;
             font-weight: 600;
             font-size: 0.65rem;
-            color: white;
+            color: #0f172a;
             max-width: 110px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            border: 1px solid #e2e8f0;
         }
 
         .admin-badge-header {
@@ -905,24 +955,24 @@
 
         .header-mode-btn {
             font-size: 0.65rem;
-            background: rgba(255,255,255,0.2);
+            background: #f1f5f9;
             padding: 0.2rem 0.5rem;
             border-radius: 9999px;
-            color: white;
+            color: #0f172a;
             font-weight: 600;
             cursor: pointer;
-            border: none;
+            border: 1px solid #e2e8f0;
             font-family: 'Space Mono', monospace;
             white-space: nowrap;
             transition: all 0.3s;
         }
 
         .header-mode-btn:hover {
-            background: rgba(255,255,255,0.3);
+            background: #e2e8f0;
         }
 
         .header-logout-btn {
-            background: rgba(255,255,255,0.2);
+            background: #1f4e8c;
             color: white;
             padding: 0.2rem 0.5rem;
             border-radius: 6px;
@@ -936,7 +986,7 @@
         }
 
         .header-logout-btn:hover {
-            background: rgba(255,255,255,0.3);
+            background: #1e3a6a;
         }
 
         @media (max-width: 720px) {

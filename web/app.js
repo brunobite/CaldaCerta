@@ -2608,10 +2608,18 @@
                     document.getElementById('auth-overlay').classList.add('hidden');
                     document.getElementById('main-app').classList.add('show');
                     
-                    // Manter dados sincronizados para offline
-                    db.ref('simulacoes/' + user.uid).keepSynced(true);
-                    db.ref('produtos/' + user.uid).keepSynced(true);
-                    db.ref('users/' + user.uid).keepSynced(true);
+                    // Manter dados sincronizados para offline (quando suportado)
+                    const syncRefs = [
+                        db.ref('simulacoes/' + user.uid),
+                        db.ref('produtos/' + user.uid),
+                        db.ref('users/' + user.uid)
+                    ];
+
+                    syncRefs.forEach((ref) => {
+                        if (typeof ref.keepSynced === 'function') {
+                            ref.keepSynced(true);
+                        }
+                    });
 
                     // Inicializar sistema
                     if (typeof initBancosDados === 'function') {
