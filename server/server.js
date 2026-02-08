@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs').promises;
 const http = require('http');
 const https = require('https');
+const zlib = require('zlib');
 const path = require('path');
 const app = express();
 
@@ -38,6 +39,7 @@ function fetchJson(url, options = {}) {
       headers: {
         'User-Agent': 'CaldaCerta/1.0 (+https://caldacerta.onrender.com)',
         Accept: 'application/json,text/plain,*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
         ...options.headers,
       },
@@ -58,15 +60,29 @@ function fetchJson(url, options = {}) {
         resolve(fetchJson(redirectUrl, { ...options, maxRedirects: maxRedirects - 1 }));
         return;
       }
-      res.on('data', (chunk) => {
+      const encoding = (res.headers['content-encoding'] || '').toLowerCase();
+      let stream = res;
+      if (encoding === 'gzip') {
+        stream = res.pipe(zlib.createGunzip());
+      } else if (encoding === 'deflate') {
+        stream = res.pipe(zlib.createInflate());
+      } else if (encoding === 'br') {
+        stream = res.pipe(zlib.createBrotliDecompress());
+      }
+
+      stream.on('data', (chunk) => {
         data += chunk;
       });
-      res.on('end', () => {
+      stream.on('end', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           const error = new Error(`HTTP ${res.statusCode}`);
           error.statusCode = res.statusCode;
           error.body = data;
           reject(error);
+          return;
+        }
+        if (!data) {
+          resolve([]);
           return;
         }
         try {
@@ -76,6 +92,7 @@ function fetchJson(url, options = {}) {
           reject(error);
         }
       });
+      stream.on('error', reject);
     });
 
     req.on('timeout', () => {
