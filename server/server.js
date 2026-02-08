@@ -9,7 +9,7 @@ const app = express();
 
 const DATA_DIR = path.join(__dirname, 'data');
 const SIMULACOES_PATH = path.join(DATA_DIR, 'simulacoes.json');
-const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY;
+const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY || process.env.CaldaCerta_clima;
 const WEATHER_CACHE_TTL_MS = Number(process.env.WEATHER_CACHE_TTL_MS) || 3 * 60 * 1000;
 const weatherCache = new Map();
 
@@ -339,10 +339,8 @@ app.get('/api/weather', async (req, res) => {
         daily: normalizeOpenWeatherDaily(oneCallData.daily || []),
         hourly: buildHourlySeriesFromOneCall(oneCallData),
       };
-    } catch (error) {
-      if (![401, 403, 404].includes(error.statusCode)) {
-        throw error;
-      }
+    } catch (oneCallError) {
+      console.log(`OneCall 3.0 indisponível (${oneCallError.statusCode || oneCallError.message}), usando fallback 2.5`);
 
       const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&appid=${OPENWEATHER_API_KEY}`;
       const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&appid=${OPENWEATHER_API_KEY}`;
