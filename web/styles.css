@@ -502,7 +502,8 @@
             line-height: 1;
         }
 
-        .brand-logo-large {
+        .brand-logo-large,
+        .brand-logo-login {
             gap: 0.5rem;
         }
 
@@ -1071,4 +1072,80 @@
         .ordem-card-badges {
             flex-wrap: wrap;
             gap: 0.5rem;
+        }
+
+        /* ============================================
+           USER INFO FOOTER
+           ============================================ */
+
+        .user-info-footer {
+            background: #f8fafc;
+            border-top: 1px solid #e5e7eb;
+            padding: 1rem 1.5rem;
+            margin-top: auto;
+        }
+
+        .user-info-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .user-info-avatar {
+            color: #9ca3af;
+            font-size: 2rem;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .user-info-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+            min-width: 0;
+        }
+
+        .user-info-name {
+            font-family: 'Sora', sans-serif;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #374151;
+        }
+
+        .user-info-email {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.75rem;
+            color: #9ca3af;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ============================================
+           LOGIN LOGO - 2x mais visível com corte
+           ============================================ */
+
+        .brand-logo-login {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .brand-mark-login {
+            width: 320px;
+            height: 100px;
+            max-height: 100px;
+            object-fit: cover;
+            object-position: center center;
+        }
+
+        @media (max-width: 480px) {
+            .brand-mark-login {
+                width: 260px;
+                height: 80px;
+                max-height: 80px;
+            }
         }

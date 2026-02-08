@@ -39,10 +39,9 @@
     <div id="auth-overlay">
         <div class="auth-box">
             <div class="auth-header-login">
-                <div class="brand-logo brand-logo-large" aria-label="CaldaCerta">
-                    <img src="/icons/logo-wordmark.png" alt="CaldaCerta" class="brand-mark-img">
+                <div class="brand-logo brand-logo-login" aria-label="CaldaCerta">
+                    <img src="/icons/logo-wordmark.png" alt="CaldaCerta" class="brand-mark-img brand-mark-login">
                 </div>
-                <p style="color: #78716c;">Sistema Profissional de Gestão Agrícola</p>
             </div>
 
             <div class="auth-tabs">
@@ -95,21 +94,18 @@
         <div class="nav-container">
             <h1 class="logo" onclick="navTo('menu')">
                 <span class="brand-logo" aria-label="CaldaCerta">
-                    <img src="/icons/logo-wordmark.png" alt="CaldaCerta" class="brand-mark-img">
+                    <img src="/icons/logo-wordmark.png" alt="CaldaCerta" class="brand-mark-img brand-mark-nav">
                 </span>
             </h1>
             <div class="header-right">
-                <div class="header-user-compact">
-                    <span class="user-badge-compact" id="user-email-display"></span>
-                    <span class="admin-badge-header" id="admin-badge-display" style="display: none;">ADMIN</span>
-                </div>
+                <span id="user-email-display" style="display:none;"></span>
+                <span class="admin-badge-header" id="admin-badge-display" style="display: none;">ADMIN</span>
                 <button id="user-display" class="header-mode-btn" type="button" onclick="toggleApiMode()" title="Modo de Acesso">
                     <i class="fas fa-cloud"></i>
-                    <span>Modo</span>
+                    <span>Remoto</span>
                 </button>
-                <button class="header-logout-btn" onclick="handleLogoutClick()" title="Sair da Aplicacao">
+                <button class="header-logout-btn" onclick="handleLogoutClick()" title="Sair">
                     <i class="fas fa-sign-out-alt"></i>
-                    <span>Sair</span>
                 </button>
             </div>
         </div>
@@ -621,6 +617,19 @@
     </footer>
 
     
+
+    <!-- INFORMAÇÕES DO USUÁRIO -->
+    <div id="user-info-footer" class="user-info-footer">
+        <div class="user-info-container">
+            <div class="user-info-avatar">
+                <i class="fas fa-user-circle"></i>
+            </div>
+            <div class="user-info-details">
+                <span class="user-info-name" id="user-name-footer"></span>
+                <span class="user-info-email" id="user-email-footer"></span>
+            </div>
+        </div>
+    </div>
 
     </div> <!-- Fecha #main-app -->
 
