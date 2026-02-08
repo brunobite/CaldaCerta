@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CaldaCerta Pro - Completo</title>
 
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0f766e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CaldaCerta">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
@@ -613,7 +621,20 @@
     </div> <!-- Fecha #main-app -->
 
     <!-- SCRIPTS DE AUTENTICAÇÃO -->
-    
+
     <script src="app.js"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").then((reg) => {
+            console.log("[SW] Registrado com sucesso:", reg.scope);
+          }).catch((err) => {
+            console.warn("[SW] Falha ao registrar:", err);
+          });
+        });
+      }
+    </script>
 </body>
 </html>
