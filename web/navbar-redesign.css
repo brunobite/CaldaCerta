@@ -17,13 +17,13 @@
    ============================================ */
 
 nav {
-    background: linear-gradient(135deg, var(--logo-blue) 0%, var(--logo-blue-light) 100%);
+    background: linear-gradient(135deg, #2b82b2 0%, #4a9cc7 100%);
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: 0 8px 32px rgba(15, 62, 92, 0.3);
-    border-bottom: 3px solid var(--logo-green);
-    padding: 0.8rem 0;
+    box-shadow: 0 8px 32px rgba(43, 130, 178, 0.2);
+    border-bottom: 4px solid var(--logo-green);
+    padding: 1.2rem 0;
 }
 
 .nav-container {
@@ -66,19 +66,19 @@ nav {
 }
 
 .brand-mark {
-    width: 200px;
-    height: 50px;
+    width: 320px;
+    height: 80px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
 }
 
 .brand-mark-img {
-    width: 200px;
+    width: 320px;
     height: auto;
-    max-height: 50px;
+    max-height: 80px;
     object-fit: contain;
-    filter: brightness(1.1) contrast(1.1) drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+    filter: brightness(1.1) contrast(1.1) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.2));
     transition: filter 0.3s ease;
 }
 
@@ -229,13 +229,13 @@ nav {
     }
 
     .brand-mark {
-        width: 160px;
-        height: 40px;
+        width: 220px;
+        height: 55px;
     }
 
     .brand-mark-img {
-        width: 160px;
-        max-height: 40px;
+        width: 220px;
+        max-height: 55px;
         filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.2));
     }
 
@@ -277,13 +277,13 @@ nav {
     }
 
     .brand-mark {
-        width: 100px;
-        height: 25px;
+        width: 160px;
+        height: 40px;
     }
 
     .brand-mark-img {
-        width: 100px;
-        max-height: 25px;
+        width: 160px;
+        max-height: 40px;
         filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.2));
     }
 
