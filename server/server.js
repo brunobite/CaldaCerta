@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs').promises;
+const http = require('http');
 const https = require('https');
 const path = require('path');
 const app = express();
@@ -28,28 +29,63 @@ function generateId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function fetchJson(url) {
+function fetchJson(url, options = {}) {
   return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        let data = '';
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-        res.on('end', () => {
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`HTTP ${res.statusCode}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(data));
-          } catch (error) {
-            reject(error);
-          }
-        });
-      })
-      .on('error', reject);
+    const requestUrl = new URL(url);
+    const transport = requestUrl.protocol === 'http:' ? http : https;
+    const requestOptions = {
+      headers: {
+        'User-Agent': 'CaldaCerta/1.0 (+https://caldacerta.onrender.com)',
+        Accept: 'application/json,text/plain,*/*',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        ...options.headers,
+      },
+      timeout: options.timeoutMs ?? 10000,
+    };
+
+    const req = transport.get(requestUrl, requestOptions, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          const error = new Error(`HTTP ${res.statusCode}`);
+          error.statusCode = res.statusCode;
+          error.body = data;
+          reject(error);
+          return;
+        }
+        try {
+          resolve(JSON.parse(data));
+        } catch (error) {
+          error.body = data;
+          reject(error);
+        }
+      });
+    });
+
+    req.on('timeout', () => {
+      req.destroy(new Error('Timeout ao consultar serviço externo.'));
+    });
+    req.on('error', reject);
   });
+}
+
+async function fetchInmetJson(path) {
+  const endpoints = [
+    `https://apitempo.inmet.gov.br${path}`,
+    `http://apitempo.inmet.gov.br${path}`,
+  ];
+  let lastError;
+  for (const url of endpoints) {
+    try {
+      return await fetchJson(url);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function buildInmetTimestamp(dateStr, hourStr) {
@@ -89,8 +125,7 @@ app.get('/api/inmet', async (req, res) => {
       return;
     }
 
-    const stationsUrl = `https://apitempo.inmet.gov.br/estacao/proximas/${lat}/${lon}`;
-    const stations = await fetchJson(stationsUrl);
+    const stations = await fetchInmetJson(`/estacao/proximas/${lat}/${lon}`);
     const station = Array.isArray(stations) ? stations[0] : null;
     const stationCode = station?.CD_ESTACAO || station?.cd_estacao;
     if (!stationCode) {
@@ -106,7 +141,7 @@ app.get('/api/inmet', async (req, res) => {
     }
 
     const responses = await Promise.all(
-      days.map((day) => fetchJson(`https://apitempo.inmet.gov.br/estacao/dados/${day}/${stationCode}`))
+      days.map((day) => fetchInmetJson(`/estacao/dados/${day}/${stationCode}`))
     );
     const records = responses.flat().filter(Boolean);
     const sorted = records.sort((a, b) => {
