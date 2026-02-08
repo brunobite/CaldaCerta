@@ -29,6 +29,20 @@
     // Constante do Admin
     window.ADMIN_EMAIL = 'bitencourttec@gmail.com';
 
+    // Habilitar persistência offline do Realtime Database
+    firebase.database().goOnline();
+    firebase.database().ref('.info/connected').on('value', (snap) => {
+        window._firebaseConnected = !!snap.val();
+        document.dispatchEvent(new CustomEvent('firebase-connection', {
+            detail: { connected: window._firebaseConnected }
+        }));
+        if (snap.val()) {
+            console.log('[Offline] Firebase conectado');
+        } else {
+            console.log('[Offline] Firebase desconectado - usando cache local');
+        }
+    });
+
     console.log('🔥 Firebase inicializado com sucesso!');
     console.log('📧 Para criar conta admin use: bitencourttec@gmail.com');
 
@@ -200,6 +214,144 @@
             return response.json();
         }
 
+        // ============================================
+        // OFFLINE SYNC QUEUE (IndexedDB)
+        // ============================================
+        const OfflineSync = {
+            DB_NAME: 'caldacerta-sync',
+            DB_VERSION: 1,
+            STORE_NAME: 'pending-sync',
+
+            _openDB() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+                    req.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+                            db.createObjectStore(this.STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                        }
+                    };
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            },
+
+            async enqueue(url, method, headers, body) {
+                const db = await this._openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(this.STORE_NAME, 'readwrite');
+                    tx.objectStore(this.STORE_NAME).add({
+                        url,
+                        method,
+                        headers,
+                        body,
+                        createdAt: new Date().toISOString()
+                    });
+                    tx.oncomplete = () => {
+                        console.log('[OfflineSync] Requisição enfileirada:', method, url);
+                        resolve();
+                    };
+                    tx.onerror = () => reject(tx.error);
+                });
+            },
+
+            async getPendingCount() {
+                const db = await this._openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(this.STORE_NAME, 'readonly');
+                    const req = tx.objectStore(this.STORE_NAME).count();
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            },
+
+            async processQueue() {
+                const db = await this._openDB();
+                const tx = db.transaction(this.STORE_NAME, 'readonly');
+                const store = tx.objectStore(this.STORE_NAME);
+
+                const items = await new Promise((resolve, reject) => {
+                    const req = store.getAll();
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+
+                if (items.length === 0) return 0;
+
+                console.log(`[OfflineSync] Processando ${items.length} requisições pendentes...`);
+                let synced = 0;
+
+                for (const item of items) {
+                    try {
+                        const res = await fetch(item.url, {
+                            method: item.method,
+                            headers: item.headers,
+                            body: item.body
+                        });
+                        if (res.ok) {
+                            const delTx = db.transaction(this.STORE_NAME, 'readwrite');
+                            delTx.objectStore(this.STORE_NAME).delete(item.id);
+                            await new Promise((r) => { delTx.oncomplete = r; });
+                            synced++;
+                        }
+                    } catch (err) {
+                        console.warn('[OfflineSync] Falha ao sincronizar item:', item.id, err);
+                    }
+                }
+
+                if (synced > 0) {
+                    console.log(`[OfflineSync] ${synced} requisições sincronizadas com sucesso`);
+                    if (typeof showToast === 'function') {
+                        showToast(`✅ ${synced} simulação(ões) sincronizada(s) com o servidor`, 'success');
+                    }
+                    if (typeof loadHistory === 'function') {
+                        loadHistory();
+                    }
+                }
+                return synced;
+            }
+        };
+
+        // Sincronizar quando voltar online
+        window.addEventListener('online', () => {
+            console.log('[Offline] Conexão restaurada - sincronizando...');
+            OfflineSync.processQueue();
+            updateOfflineIndicator(true);
+        });
+
+        window.addEventListener('offline', () => {
+            console.log('[Offline] Conexão perdida - modo offline ativado');
+            updateOfflineIndicator(false);
+        });
+
+        // Indicador visual de status de conexão
+        function updateOfflineIndicator(isOnline) {
+            let indicator = document.getElementById('offline-indicator');
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.id = 'offline-indicator';
+                indicator.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;text-align:center;padding:4px 12px;font-size:13px;font-weight:600;transition:transform 0.3s ease;';
+                document.body.prepend(indicator);
+            }
+            if (isOnline) {
+                indicator.textContent = '✓ Online - dados sincronizados';
+                indicator.style.background = '#15803d';
+                indicator.style.color = '#fff';
+                indicator.style.transform = 'translateY(0)';
+                setTimeout(() => { indicator.style.transform = 'translateY(-100%)'; }, 3000);
+            } else {
+                indicator.textContent = '⚡ Modo Offline - dados serão sincronizados ao reconectar';
+                indicator.style.background = '#f59e0b';
+                indicator.style.color = '#0c0a09';
+                indicator.style.transform = 'translateY(0)';
+            }
+        }
+
+        // Verificar status inicial
+        if (!navigator.onLine) {
+            updateOfflineIndicator(false);
+        }
+
         async function loadHistoryFromServer() {
             const base = getApiBase();
             const uidParam = !isUserAdmin && currentUserData ? `?uid=${encodeURIComponent(currentUserData.uid)}` : '';
@@ -369,21 +521,21 @@
                 createdAt: editingAllowed ? currentEditingSimulation.createdAt || now : now
             };
 
-            if (editingAllowed && currentEditingSimulation?.id) {
-                const url = `${base}/api/simulacoes/${currentEditingSimulation.id}`;
-                return fetchJson(url, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
+            const method = (editingAllowed && currentEditingSimulation?.id) ? 'PUT' : 'POST';
+            const url = (editingAllowed && currentEditingSimulation?.id)
+                ? `${base}/api/simulacoes/${currentEditingSimulation.id}`
+                : `${base}/api/simulacoes`;
+            const headers = { 'Content-Type': 'application/json' };
+            const bodyStr = JSON.stringify(body);
+
+            // Se estiver offline, enfileirar para sincronização posterior
+            if (!navigator.onLine) {
+                await OfflineSync.enqueue(url, method, headers, bodyStr);
+                showToast('📱 Simulação salva localmente - será sincronizada ao reconectar', 'success');
+                return { queued: true };
             }
 
-            const url = `${base}/api/simulacoes`;
-            return fetchJson(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
+            return fetchJson(url, { method, headers, body: bodyStr });
         }
 
         window.saveSimulation = async () => {
@@ -2456,6 +2608,11 @@
                     document.getElementById('auth-overlay').classList.add('hidden');
                     document.getElementById('main-app').classList.add('show');
                     
+                    // Manter dados sincronizados para offline
+                    db.ref('simulacoes/' + user.uid).keepSynced(true);
+                    db.ref('produtos/' + user.uid).keepSynced(true);
+                    db.ref('users/' + user.uid).keepSynced(true);
+
                     // Inicializar sistema
                     if (typeof initBancosDados === 'function') {
                         initBancosDados();
@@ -2465,6 +2622,11 @@
                     }
                     
                     showToast('✅ Bem-vindo(a), ' + (userData?.name || user.email) + '!', 'success');
+
+                    // Sincronizar fila pendente (se houver)
+                    if (navigator.onLine) {
+                        OfflineSync.processQueue();
+                    }
                 } catch (error) {
                     console.error('Erro:', error);
                 }
