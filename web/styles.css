@@ -1087,10 +1087,12 @@
 
         .user-info-container {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 0.75rem;
+            gap: 0.4rem;
             max-width: 600px;
             margin: 0 auto;
+            text-align: center;
         }
 
         .user-info-avatar {
