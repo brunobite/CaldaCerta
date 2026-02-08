@@ -2326,45 +2326,55 @@
             return Number((temperature - dewPoint).toFixed(2));
         }
 
-        function formatDateISO(date) {
-            return date.toISOString().split('T')[0];
-        }
+        async function fetchWeatherData({ latitude, longitude, city }) {
+            const params = new URLSearchParams();
+            if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+                params.set('lat', latitude);
+                params.set('lon', longitude);
+            }
+            if (city) {
+                params.set('city', city);
+            }
+            params.set('units', 'metric');
+            params.set('lang', 'pt_br');
 
-        async function fetchOpenMeteoData(latitude, longitude, startDate, endDate) {
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relativehumidity_2m,windspeed_10m,precipitation&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}&timezone=auto`;
+            const url = `/api/weather?${params.toString()}`;
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error('Falha ao obter dados meteorológicos.');
             }
-            const data = await response.json();
-            data.source = 'open-meteo';
-            return data;
-        }
-
-        async function fetchInmetData(latitude, longitude, startDate, endDate) {
-            const url = `/api/inmet?lat=${latitude}&lon=${longitude}&start_date=${formatDateISO(startDate)}&end_date=${formatDateISO(endDate)}`;
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error('Falha ao obter dados do INMET.');
-            }
             return response.json();
         }
 
-        async function fetchClimateData(latitude, longitude, startDate, endDate) {
-            try {
-                return await fetchInmetData(latitude, longitude, startDate, endDate);
-            } catch (error) {
-                console.warn('INMET indisponível, usando Open-Meteo como fallback.', error);
-                return fetchOpenMeteoData(latitude, longitude, startDate, endDate);
-            }
+        function buildFallbackHourlyData(data, startDate) {
+            const baseDate = startDate ?? new Date();
+            const hours = Array.from({ length: CLIMATE_HOURS }, (_, idx) => {
+                const next = new Date(baseDate);
+                next.setHours(next.getHours() + idx);
+                return next.toISOString();
+            });
+
+            const currentTemp = Number(data?.current?.temp ?? data?.daily?.[0]?.temp_max ?? 0);
+            const humidityValue = Number(data?.current?.humidity ?? 50);
+            const windValue = Number(data?.current?.wind_speed ?? 0);
+            const precipValue = Number(data?.daily?.[0]?.pop ?? 0);
+
+            return {
+                time: hours,
+                temperature_2m: hours.map(() => currentTemp),
+                relativehumidity_2m: hours.map(() => humidityValue),
+                windspeed_10m: hours.map(() => windValue),
+                precipitation: hours.map(() => precipValue),
+            };
         }
 
         function buildClimateSeries(data, startDate) {
-            const times = data?.hourly?.time || [];
-            const temps = data?.hourly?.temperature_2m || [];
-            const humidity = data?.hourly?.relativehumidity_2m || [];
-            const winds = data?.hourly?.windspeed_10m || [];
-            const precipitation = data?.hourly?.precipitation || [];
+            const hourlyData = data?.hourly?.time?.length ? data.hourly : buildFallbackHourlyData(data, startDate);
+            const times = hourlyData?.time || [];
+            const temps = hourlyData?.temperature_2m || [];
+            const humidity = hourlyData?.relativehumidity_2m || [];
+            const winds = hourlyData?.windspeed_10m || [];
+            const precipitation = hourlyData?.precipitation || [];
             if (!times.length) return null;
 
             const start = startDate ?? new Date();
@@ -2388,7 +2398,7 @@
                 winds: sliceWinds,
                 precipitation: slicePrecip,
                 deltaT,
-                source: data?.source || 'inmet'
+                source: data?.source || 'openweathermap'
             };
         }
 
@@ -2399,8 +2409,6 @@
             const longitude = parseFloat(lonField.value);
             const applicationDateValue = document.getElementById('id_data').value;
             const applicationDate = applicationDateValue ? new Date(`${applicationDateValue}T00:00:00`) : new Date();
-            const endDate = new Date(applicationDate);
-            endDate.setDate(endDate.getDate() + 1);
 
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
                 showToast('❌ Informe latitude e longitude válidas.', 'error');
@@ -2409,7 +2417,7 @@
 
             try {
                 showToast('⏳ Buscando dados meteorológicos...', 'success');
-                const data = await fetchClimateData(latitude, longitude, applicationDate, endDate);
+                const data = await fetchWeatherData({ latitude, longitude });
                 const series = buildClimateSeries(data, applicationDate);
                 if (!series) {
                     showToast('❌ Dados meteorológicos indisponíveis.', 'error');
@@ -2419,10 +2427,7 @@
                 initCharts();
                 renderClimateTables();
                 checkClimateConditions(series.deltaT);
-                const sourceMessage = series.source === 'inmet'
-                    ? '✅ Clima atualizado com INMET.'
-                    : '⚠️ INMET indisponível. Dados carregados via Open-Meteo.';
-                showToast(sourceMessage, series.source === 'inmet' ? 'success' : 'error');
+                showToast('✅ Clima atualizado via OpenWeatherMap.', 'success');
             } catch (error) {
                 console.error(error);
                 showToast('❌ Erro ao atualizar clima. Tente novamente.', 'error');
@@ -2496,16 +2501,10 @@
             if (!cidade || !uf) return;
             try {
                 showToast('⏳ Buscando coordenadas...', 'success');
-                const resp = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cidade)}&count=5&language=pt&format=json`);
-                const data = await resp.json();
-                if (data.results && data.results.length > 0) {
-                    const match = data.results.find(r =>
-                        r.admin1 && r.admin1.toLowerCase().includes(uf.toLowerCase()) ||
-                        r.admin2 && r.admin2.toLowerCase().includes(uf.toLowerCase()) ||
-                        r.country_code === 'BR'
-                    ) || data.results[0];
-                    document.getElementById('clima_lat').value = match.latitude.toFixed(4);
-                    document.getElementById('clima_lon').value = match.longitude.toFixed(4);
+                const data = await fetchWeatherData({ city: `${cidade}, ${uf}` });
+                if (data?.location?.lat && data?.location?.lon) {
+                    document.getElementById('clima_lat').value = Number(data.location.lat).toFixed(4);
+                    document.getElementById('clima_lon').value = Number(data.location.lon).toFixed(4);
                     showToast(`✅ Coordenadas de ${cidade}/${uf} preenchidas.`, 'success');
                     refreshClimate();
                 } else {

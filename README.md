@@ -28,6 +28,16 @@ cd server
 npm install
 ```
 
+### 3. Configurar OpenWeatherMap
+
+O backend usa a API do OpenWeatherMap via proxy para evitar expor a chave no frontend. Crie um arquivo `server/.env` com:
+
+```bash
+OPENWEATHER_API_KEY=SEU_TOKEN_AQUI
+# Opcional: cache em ms (padrão 180000 = 3 min)
+WEATHER_CACHE_TTL_MS=180000
+```
+
 ## ☁️ Deploy Manual
 
 Para publicar o app em um servidor remoto, siga o guia em `DEPLOY.md`.
