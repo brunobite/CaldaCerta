@@ -2327,22 +2327,28 @@
         }
 
         function normalizeHourlySeries(data) {
-            if (data?.hourly?.time?.length) return data.hourly;
-            if (data?.hourly_series?.time?.length) return data.hourly_series;
             if (Array.isArray(data?.hourly) && data.hourly.length) {
-                const time = data.hourly.map((item) => new Date(item.dt * 1000).toISOString());
+                const time = data.hourly.map((item) => item.time || (item.dt ? new Date(item.dt * 1000).toISOString() : null));
+                const deltaT = data.hourly.map((item) => {
+                    const value = Number(item.deltaT ?? item.delta_t);
+                    return Number.isFinite(value) ? value : null;
+                });
                 return {
                     time,
-                    temperature_2m: data.hourly.map((item) => Number(item.temp ?? 0)),
+                    temperature_2m: data.hourly.map((item) => Number(item.temperature ?? item.temp ?? 0)),
                     relativehumidity_2m: data.hourly.map((item) => Number(item.humidity ?? 0)),
                     windspeed_10m: data.hourly.map((item) => Number(item.wind_speed ?? 0)),
                     precipitation: data.hourly.map((item) => Number(item.precipitation ?? 0)),
+                    dew_point: data.hourly.map((item) => Number(item.dew_point ?? 0)),
+                    deltaT,
                 };
             }
+            if (data?.hourly?.time?.length) return data.hourly;
+            if (data?.hourly_series?.time?.length) return data.hourly_series;
             return null;
         }
 
-        async function fetchWeatherData({ latitude, longitude, city }) {
+        async function fetchWeatherData({ latitude, longitude, city, state, country }) {
             const params = new URLSearchParams();
             if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
                 params.set('lat', latitude);
@@ -2351,8 +2357,15 @@
             if (city) {
                 params.set('city', city);
             }
-            params.set('units', 'metric');
-            params.set('lang', 'pt_br');
+            if (state) {
+                params.set('state', state);
+            }
+            if (country) {
+                params.set('country', country);
+            }
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
+            params.set('hours', CLIMATE_HOURS);
+            params.set('tz', timezone);
 
             const base = getApiBase();
             const url = `${base}/api/weather?${params.toString()}`;
@@ -2371,10 +2384,10 @@
                 return next.toISOString();
             });
 
-            const currentTemp = Number(data?.current?.temp ?? data?.daily?.[0]?.temp_max ?? 0);
-            const humidityValue = Number(data?.current?.humidity ?? 50);
-            const windValue = Number(data?.current?.wind_speed ?? 0);
-            const precipValue = Number(data?.daily?.[0]?.pop ?? 0);
+            const currentTemp = Number(data?.hourly?.[0]?.temperature ?? data?.current?.temp ?? data?.daily?.[0]?.temp_max ?? 0);
+            const humidityValue = Number(data?.hourly?.[0]?.humidity ?? data?.current?.humidity ?? 50);
+            const windValue = Number(data?.hourly?.[0]?.wind_speed ?? data?.current?.wind_speed ?? 0);
+            const precipValue = Number(data?.hourly?.[0]?.precipitation ?? data?.daily?.[0]?.pop ?? 0);
 
             return {
                 time: hours,
@@ -2393,6 +2406,7 @@
             const humidity = hourlyData?.relativehumidity_2m || [];
             const winds = hourlyData?.windspeed_10m || [];
             const precipitation = hourlyData?.precipitation || [];
+            const deltaTSeries = hourlyData?.deltaT || [];
             if (!times.length) return null;
 
             const start = startDate ?? new Date();
@@ -2405,9 +2419,27 @@
             const sliceHumidity = humidity.slice(startIndex, endIndex);
             const sliceWinds = winds.slice(startIndex, endIndex);
             const slicePrecip = precipitation.slice(startIndex, endIndex);
+            const sliceDeltaT = deltaTSeries.slice(startIndex, endIndex);
 
-            const labels = sliceTimes.map(time => new Date(time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
-            const deltaT = sliceTemps.map((temp, idx) => computeDeltaT(temp, sliceHumidity[idx] ?? 50));
+            const locationTimezone = data?.location?.timezone || 'America/Sao_Paulo';
+            const labelFormatter = new Intl.DateTimeFormat('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: locationTimezone
+            });
+            const labels = sliceTimes.map((time) => {
+                if (!time) return '';
+                const date = new Date(time);
+                if (Number.isNaN(date.getTime())) return time;
+                return labelFormatter.format(date);
+            });
+            const deltaT = sliceTemps.map((temp, idx) => {
+                const provided = Number(sliceDeltaT[idx]);
+                if (Number.isFinite(provided)) return provided;
+                return computeDeltaT(temp, sliceHumidity[idx] ?? 50);
+            });
 
             return {
                 labels,
@@ -2416,7 +2448,7 @@
                 winds: sliceWinds,
                 precipitation: slicePrecip,
                 deltaT,
-                source: data?.source || 'openweathermap'
+                source: data?.source || 'open-meteo'
             };
         }
 
@@ -2445,7 +2477,7 @@
                 initCharts();
                 renderClimateTables();
                 checkClimateConditions(series.deltaT);
-                showToast('✅ Clima atualizado via OpenWeatherMap.', 'success');
+                showToast('✅ Clima atualizado via Open-Meteo.', 'success');
             } catch (error) {
                 console.error(error);
                 showToast('❌ Erro ao atualizar clima. Tente novamente.', 'error');
@@ -2519,7 +2551,7 @@
             if (!cidade || !uf) return;
             try {
                 showToast('⏳ Buscando coordenadas...', 'success');
-                const data = await fetchWeatherData({ city: `${cidade}, ${uf}` });
+                const data = await fetchWeatherData({ city: cidade, state: uf, country: 'BR' });
                 if (data?.location?.lat && data?.location?.lon) {
                     document.getElementById('clima_lat').value = Number(data.location.lat).toFixed(4);
                     document.getElementById('clima_lon').value = Number(data.location.lon).toFixed(4);

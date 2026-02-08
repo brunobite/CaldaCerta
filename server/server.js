@@ -9,9 +9,10 @@ const app = express();
 
 const DATA_DIR = path.join(__dirname, 'data');
 const SIMULACOES_PATH = path.join(DATA_DIR, 'simulacoes.json');
-const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY || process.env.CaldaCerta_clima;
 const WEATHER_CACHE_TTL_MS = Number(process.env.WEATHER_CACHE_TTL_MS) || 3 * 60 * 1000;
 const weatherCache = new Map();
+const GEOCODE_CACHE_TTL_MS = Number(process.env.GEOCODE_CACHE_TTL_MS) || 24 * 60 * 60 * 1000;
+const geocodeCache = new Map();
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -138,10 +139,10 @@ function formatDateISO(date) {
   return date.toISOString().split('T')[0];
 }
 
-function buildWeatherCacheKey(lat, lon, units, lang) {
+function buildWeatherCacheKey(lat, lon, hours, tz) {
   const latKey = Number(lat).toFixed(4);
   const lonKey = Number(lon).toFixed(4);
-  return `${latKey}:${lonKey}:${units}:${lang}`;
+  return `${latKey}:${lonKey}:${hours}:${tz}`;
 }
 
 function computeDewPoint(temperature, humidity) {
@@ -172,103 +173,64 @@ function setCachedWeather(cacheKey, payload) {
   });
 }
 
+function buildGeocodeCacheKey(city, state, country) {
+  return [city, state, country]
+    .filter(Boolean)
+    .map((part) => part.toLowerCase().trim())
+    .join('|');
+}
+
+function getCachedGeocode(cacheKey) {
+  const cached = geocodeCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    geocodeCache.delete(cacheKey);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setCachedGeocode(cacheKey, payload) {
+  geocodeCache.set(cacheKey, {
+    expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
+    payload,
+  });
+}
+
 function buildLocationName(location) {
   if (!location) return 'Localização desconhecida';
   return [location.name, location.state, location.country].filter(Boolean).join(', ');
 }
 
-function normalizeOpenWeatherDaily(days = []) {
-  return days.map((day) => ({
-    dt: day.dt,
-    temp_min: day.temp?.min ?? day.temp_min,
-    temp_max: day.temp?.max ?? day.temp_max,
-    description: day.weather?.[0]?.description || '',
-    icon: day.weather?.[0]?.icon || '',
-    pop: day.pop ?? 0,
-  }));
-}
+function buildTimeSeriesItem({
+  time,
+  temperature,
+  humidity,
+  precipitation,
+  windSpeed,
+  dewPoint,
+}) {
+  const normalizedTemperature = Number.isFinite(temperature) ? Number(temperature) : null;
+  const normalizedHumidity = Number.isFinite(humidity) ? Number(humidity) : null;
+  const normalizedPrecipitation = Number.isFinite(precipitation) ? Number(precipitation) : null;
+  const normalizedWind = Number.isFinite(windSpeed) ? Number(windSpeed) : null;
+  let normalizedDewPoint = Number.isFinite(dewPoint) ? Number(dewPoint) : null;
+  if (!Number.isFinite(normalizedDewPoint)) {
+    normalizedDewPoint = computeDewPoint(normalizedTemperature, normalizedHumidity);
+  }
+  const deltaT = Number.isFinite(normalizedTemperature) && Number.isFinite(normalizedDewPoint)
+    ? Number((normalizedTemperature - normalizedDewPoint).toFixed(2))
+    : null;
 
-function buildHourlySeriesFromOneCall(data) {
-  const timezoneOffset = data.timezone_offset || 0;
-  const hourly = data.hourly || [];
-  if (!hourly.length) return null;
   return {
-    time: hourly.map((item) => new Date((item.dt + timezoneOffset) * 1000).toISOString()),
-    temperature_2m: hourly.map((item) => item.temp),
-    relativehumidity_2m: hourly.map((item) => item.humidity),
-    windspeed_10m: hourly.map((item) => (Number.isFinite(item.wind_speed) ? item.wind_speed * 3.6 : 0)),
-    precipitation: hourly.map((item) => item.rain?.['1h'] ?? item.snow?.['1h'] ?? 0),
+    time: time || null,
+    temperature: normalizedTemperature,
+    humidity: normalizedHumidity,
+    precipitation: normalizedPrecipitation,
+    wind_speed: normalizedWind,
+    dew_point: Number.isFinite(normalizedDewPoint) ? normalizedDewPoint : null,
+    deltaT,
   };
-}
-
-function buildHourlyListFromSeries(series) {
-  if (!series?.time?.length) return [];
-  return series.time.map((time, idx) => {
-    const temp = Number(series.temperature_2m?.[idx] ?? 0);
-    const humidity = Number(series.relativehumidity_2m?.[idx] ?? 0);
-    return {
-      dt: Math.floor(new Date(time).getTime() / 1000),
-      temp,
-      humidity,
-      wind_speed: Number(series.windspeed_10m?.[idx] ?? 0),
-      precipitation: Number(series.precipitation?.[idx] ?? 0),
-      dew_point: computeDewPoint(temp, humidity),
-    };
-  });
-}
-
-function buildHourlySeriesFromForecast(list = [], timezoneOffset = 0) {
-  if (!list.length) return null;
-  return {
-    time: list.map((item) => new Date((item.dt + timezoneOffset) * 1000).toISOString()),
-    temperature_2m: list.map((item) => item.main?.temp ?? 0),
-    relativehumidity_2m: list.map((item) => item.main?.humidity ?? 0),
-    windspeed_10m: list.map((item) => (Number.isFinite(item.wind?.speed) ? item.wind.speed * 3.6 : 0)),
-    precipitation: list.map((item) => item.rain?.['3h'] ?? item.snow?.['3h'] ?? 0),
-  };
-}
-
-function buildDailyFromForecast(list = [], timezoneOffset = 0) {
-  const grouped = new Map();
-  list.forEach((item) => {
-    const localDate = new Date((item.dt + timezoneOffset) * 1000).toISOString().split('T')[0];
-    if (!grouped.has(localDate)) {
-      grouped.set(localDate, []);
-    }
-    grouped.get(localDate).push(item);
-  });
-
-  return Array.from(grouped.entries()).map(([dateStr, items]) => {
-    let tempMin = Number.POSITIVE_INFINITY;
-    let tempMax = Number.NEGATIVE_INFINITY;
-    let pop = 0;
-    let bestItem = items[0];
-    let bestScore = Infinity;
-
-    items.forEach((item) => {
-      const min = item.main?.temp_min ?? item.main?.temp ?? 0;
-      const max = item.main?.temp_max ?? item.main?.temp ?? 0;
-      tempMin = Math.min(tempMin, min);
-      tempMax = Math.max(tempMax, max);
-      pop = Math.max(pop, item.pop ?? 0);
-
-      const localHour = new Date((item.dt + timezoneOffset) * 1000).getUTCHours();
-      const score = Math.abs(localHour - 12);
-      if (score < bestScore) {
-        bestScore = score;
-        bestItem = item;
-      }
-    });
-
-    return {
-      dt: bestItem?.dt || Math.floor(new Date(`${dateStr}T12:00:00Z`).getTime() / 1000) - timezoneOffset,
-      temp_min: tempMin,
-      temp_max: tempMax,
-      description: bestItem.weather?.[0]?.description || '',
-      icon: bestItem.weather?.[0]?.icon || '',
-      pop,
-    };
-  });
 }
 
 // 🔧 CONFIGURAÇÃO PARA SERVIR O FRONTEND DA PASTA 'web/'
@@ -292,12 +254,13 @@ app.get('/api/weather', async (req, res) => {
       city,
       state,
       country = 'BR',
-      units = 'metric',
-      lang = 'pt_br',
+      hours = '24',
+      tz = 'America/Sao_Paulo',
     } = req.query;
 
-    if (!OPENWEATHER_API_KEY) {
-      res.status(500).json({ error: 'OPENWEATHER_API_KEY não configurada no servidor.' });
+    const requestedHours = Number(hours);
+    if (!Number.isFinite(requestedHours) || requestedHours <= 0 || requestedHours > 168) {
+      res.status(400).json({ error: 'Parâmetro hours inválido (use 1-168).' });
       return;
     }
 
@@ -311,13 +274,24 @@ app.get('/api/weather', async (req, res) => {
         return;
       }
 
-      const hasComma = city.includes(',');
-      const locationQuery = hasComma
-        ? city
-        : [city, state, country].filter(Boolean).join(', ');
-      const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(locationQuery)}&limit=1&appid=${OPENWEATHER_API_KEY}`;
-      const geoData = await fetchJson(geoUrl);
-      const location = Array.isArray(geoData) ? geoData[0] : null;
+      const cacheKey = buildGeocodeCacheKey(city, state, country);
+      const cachedGeocode = getCachedGeocode(cacheKey);
+      let location = cachedGeocode;
+      if (!location) {
+        const queryParts = [city, state, country].filter(Boolean);
+        const params = new URLSearchParams({
+          format: 'json',
+          limit: '1',
+          addressdetails: '1',
+        });
+        params.set('q', queryParts.join(', '));
+        const geoUrl = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+        const geoData = await fetchJson(geoUrl);
+        location = Array.isArray(geoData) ? geoData[0] : null;
+        if (location) {
+          setCachedGeocode(cacheKey, location);
+        }
+      }
 
       if (!location) {
         res.status(404).json({ error: 'Cidade não encontrada.' });
@@ -326,7 +300,11 @@ app.get('/api/weather', async (req, res) => {
 
       latitude = Number(location.lat);
       longitude = Number(location.lon);
-      locationName = buildLocationName(location);
+      locationName = location.display_name || buildLocationName({
+        name: city,
+        state,
+        country,
+      });
     }
 
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
@@ -334,90 +312,69 @@ app.get('/api/weather', async (req, res) => {
       return;
     }
 
-    const cacheKey = buildWeatherCacheKey(latitude, longitude, units, lang);
+    const cacheKey = buildWeatherCacheKey(latitude, longitude, requestedHours, tz);
     const cached = getCachedWeather(cacheKey);
     if (cached) {
       res.json(cached);
       return;
     }
 
+    const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
+    forecastUrl.searchParams.set('latitude', latitude);
+    forecastUrl.searchParams.set('longitude', longitude);
+    forecastUrl.searchParams.set(
+      'hourly',
+      'temperature_2m,relativehumidity_2m,precipitation,windspeed_10m,dewpoint_2m'
+    );
+    forecastUrl.searchParams.set('forecast_hours', requestedHours);
+    forecastUrl.searchParams.set('timezone', tz || 'America/Sao_Paulo');
+    forecastUrl.searchParams.set('timeformat', 'iso8601');
+
+    const meteoData = await fetchJson(forecastUrl.toString());
+    const hourlyData = meteoData?.hourly || {};
+    const timeSeries = Array.isArray(hourlyData.time) ? hourlyData.time : [];
+    const temperatureSeries = Array.isArray(hourlyData.temperature_2m) ? hourlyData.temperature_2m : [];
+    const humiditySeries = Array.isArray(hourlyData.relativehumidity_2m) ? hourlyData.relativehumidity_2m : [];
+    const precipitationSeries = Array.isArray(hourlyData.precipitation) ? hourlyData.precipitation : [];
+    const windSeries = Array.isArray(hourlyData.windspeed_10m) ? hourlyData.windspeed_10m : [];
+    const dewPointSeries = Array.isArray(hourlyData.dewpoint_2m) ? hourlyData.dewpoint_2m : [];
+
+    if (!timeSeries.length) {
+      res.status(502).json({ error: 'Resposta inválida do Open-Meteo.' });
+      return;
+    }
+
+    const hourly = Array.from({ length: requestedHours }, (_, index) => buildTimeSeriesItem({
+      time: timeSeries[index],
+      temperature: temperatureSeries[index],
+      humidity: humiditySeries[index],
+      precipitation: precipitationSeries[index],
+      windSpeed: windSeries[index],
+      dewPoint: dewPointSeries[index],
+    }));
+
     const location = {
-      name: locationName || `Lat ${latitude.toFixed(2)}, Lon ${longitude.toFixed(2)}`,
+      name: locationName || meteoData?.timezone || `Lat ${latitude.toFixed(2)}, Lon ${longitude.toFixed(2)}`,
       lat: latitude,
       lon: longitude,
+      timezone: meteoData?.timezone || tz || 'America/Sao_Paulo',
     };
 
-    let payload;
-
-    try {
-      const oneCallUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&exclude=minutely,alerts&appid=${OPENWEATHER_API_KEY}`;
-      const oneCallData = await fetchJson(oneCallUrl);
-      if (!locationName && oneCallData?.timezone) {
-        location.name = oneCallData.timezone;
-      }
-
-      const hourlySeries = buildHourlySeriesFromOneCall(oneCallData);
-      payload = {
-        source: 'openweathermap',
-        location,
-        current: {
-          temp: oneCallData.current?.temp,
-          feels_like: oneCallData.current?.feels_like,
-          humidity: oneCallData.current?.humidity,
-          wind_speed: Number.isFinite(oneCallData.current?.wind_speed)
-            ? oneCallData.current.wind_speed * 3.6
-            : 0,
-          description: oneCallData.current?.weather?.[0]?.description || '',
-          icon: oneCallData.current?.weather?.[0]?.icon || '',
-        },
-        daily: normalizeOpenWeatherDaily(oneCallData.daily || []),
-        hourly: buildHourlyListFromSeries(hourlySeries),
-        hourly_series: hourlySeries,
-      };
-    } catch (oneCallError) {
-      console.log(`OneCall 3.0 indisponível (${oneCallError.statusCode || oneCallError.message}), usando fallback 2.5`);
-
-      const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&appid=${OPENWEATHER_API_KEY}`;
-      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&units=${units}&lang=${lang}&appid=${OPENWEATHER_API_KEY}`;
-      const [currentData, forecastData] = await Promise.all([
-        fetchJson(currentUrl),
-        fetchJson(forecastUrl),
-      ]);
-
-      if (!locationName) {
-        location.name = currentData?.name || forecastData?.city?.name || location.name;
-      }
-
-      const timezoneOffset = forecastData?.city?.timezone || 0;
-      const hourlySeries = buildHourlySeriesFromForecast(forecastData.list || [], timezoneOffset);
-      payload = {
-        source: 'openweathermap',
-        location,
-        current: {
-          temp: currentData.main?.temp,
-          feels_like: currentData.main?.feels_like,
-          humidity: currentData.main?.humidity,
-          wind_speed: Number.isFinite(currentData.wind?.speed)
-            ? currentData.wind.speed * 3.6
-            : 0,
-          description: currentData.weather?.[0]?.description || '',
-          icon: currentData.weather?.[0]?.icon || '',
-        },
-        daily: buildDailyFromForecast(forecastData.list || [], timezoneOffset),
-        hourly: buildHourlyListFromSeries(hourlySeries),
-        hourly_series: hourlySeries,
-      };
-    }
+    const payload = {
+      source: 'open-meteo',
+      location,
+      hourly,
+    };
 
     setCachedWeather(cacheKey, payload);
     res.json(payload);
   } catch (error) {
-    console.error('Erro ao consultar OpenWeatherMap:', error);
+    console.error('Erro ao consultar Open-Meteo:', error);
     const status = error.statusCode || 502;
-    const message = status === 429
-      ? 'Limite de requisições do OpenWeatherMap atingido. Tente novamente em instantes.'
-      : 'Falha ao consultar OpenWeatherMap.';
-    res.status(status).json({ error: message });
+    const message = status === 400
+      ? 'Parâmetros inválidos para consulta meteorológica.'
+      : 'Falha ao consultar Open-Meteo.';
+    res.status(status >= 400 && status < 600 ? status : 502).json({ error: message });
   }
 });
 
