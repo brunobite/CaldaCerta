@@ -31,7 +31,7 @@
 
 
         <link rel="stylesheet" href="styles.css">
-        <link rel="stylesheet" href="navbar-redesign.css">
+        <link rel="stylesheet" href="navbar-clean.css">
         <link rel="stylesheet" href="layout-integration.css">
 </head>
 <body>
@@ -40,7 +40,7 @@
         <div class="auth-box">
             <div class="auth-header-login">
                 <div class="brand-logo brand-logo-large" aria-label="CaldaCerta">
-                    <img src="/icons/logo-caldacerta.png" alt="CaldaCerta" class="brand-mark-img">
+                    <img src="/icons/logo-wordmark.png" alt="CaldaCerta" class="brand-mark-img">
                 </div>
                 <p style="color: #78716c;">Sistema Profissional de Gestão Agrícola</p>
             </div>
@@ -95,7 +95,7 @@
         <div class="nav-container">
             <h1 class="logo" onclick="navTo('menu')">
                 <span class="brand-logo" aria-label="CaldaCerta">
-                    <img src="/icons/logo-caldacerta.png" alt="CaldaCerta" class="brand-mark-img">
+                    <img src="/icons/logo-wordmark.png" alt="CaldaCerta" class="brand-mark-img">
                 </span>
             </h1>
             <div class="header-right">
@@ -103,11 +103,13 @@
                     <span class="user-badge-compact" id="user-email-display"></span>
                     <span class="admin-badge-header" id="admin-badge-display" style="display: none;">ADMIN</span>
                 </div>
-                <button id="user-display" class="header-mode-btn" type="button" onclick="toggleApiMode()">
-                    Detectando...
+                <button id="user-display" class="header-mode-btn" type="button" onclick="toggleApiMode()" title="Modo de Acesso">
+                    <i class="fas fa-cloud"></i>
+                    <span>Modo</span>
                 </button>
-                <button class="header-logout-btn" onclick="handleLogoutClick()">
-                    <i class="fas fa-sign-out-alt"></i> Sair
+                <button class="header-logout-btn" onclick="handleLogoutClick()" title="Sair da Aplicacao">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Sair</span>
                 </button>
             </div>
         </div>
