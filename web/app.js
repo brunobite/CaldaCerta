@@ -1593,9 +1593,11 @@
                     loadHistory().catch(() => {});
                 } catch (saveError) {
                     console.warn('⚠️ Erro ao salvar antes de gerar PDF:', saveError);
+                    showToast('⚠️ Erro ao salvar, mas o PDF será gerado', 'error');
                 }
             }
 
+            try {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
 
@@ -1716,12 +1718,13 @@
                     halign: 'center',
                     valign: 'middle'
                 },
-                bodyStyles: { fontSize: 8, valign: 'middle', textColor: [0, 0, 0] },
+                bodyStyles: { fontSize: 8, valign: 'middle', textColor: [0, 0, 0], overflow: 'linebreak' },
+                tableWidth: 'auto',
                 columnStyles: {
                     0: { cellWidth: 10, halign: 'center', textColor: [0, 0, 0] },
-                    1: { cellWidth: 65, textColor: [0, 0, 0] },
-                    2: { cellWidth: 45, textColor: [0, 0, 0] },
-                    3: { cellWidth: 18, halign: 'center', textColor: [0, 0, 0] },
+                    1: { cellWidth: 'auto', textColor: [0, 0, 0] },
+                    2: { cellWidth: 'auto', textColor: [0, 0, 0], overflow: 'linebreak' },
+                    3: { cellWidth: 20, halign: 'center', textColor: [0, 0, 0] },
                     4: { cellWidth: 22, halign: 'center', textColor: [0, 0, 0] },
                     5: { cellWidth: 22, halign: 'center', textColor: [0, 0, 0] },
                     6: {
@@ -2037,6 +2040,10 @@
 
             doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('✅ PDF gerado e simulação salva!', 'success');
+            } catch (pdfError) {
+                console.error('❌ Erro ao gerar PDF:', pdfError);
+                showToast('❌ Erro ao gerar PDF. Verifique os dados.', 'error');
+            }
         };
 
         // Gráficos
