@@ -1,5 +1,11 @@
 // Configuração da API
-window.API_BASE = "https://api-caldacerta.onrender.com" || "http://localhost:3000";
+(() => {
+  const host = window.location.hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  const isApiHost = host.startsWith('api-');
+  const defaultBase = isLocal || isApiHost ? '' : 'https://api-caldacerta.onrender.com';
+  window.API_BASE = window.API_BASE || defaultBase;
+})();
 
 // Mock API para desenvolvimento
 window.API = {

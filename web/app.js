@@ -2326,6 +2326,22 @@
             return Number((temperature - dewPoint).toFixed(2));
         }
 
+        function normalizeHourlySeries(data) {
+            if (data?.hourly?.time?.length) return data.hourly;
+            if (data?.hourly_series?.time?.length) return data.hourly_series;
+            if (Array.isArray(data?.hourly) && data.hourly.length) {
+                const time = data.hourly.map((item) => new Date(item.dt * 1000).toISOString());
+                return {
+                    time,
+                    temperature_2m: data.hourly.map((item) => Number(item.temp ?? 0)),
+                    relativehumidity_2m: data.hourly.map((item) => Number(item.humidity ?? 0)),
+                    windspeed_10m: data.hourly.map((item) => Number(item.wind_speed ?? 0)),
+                    precipitation: data.hourly.map((item) => Number(item.precipitation ?? 0)),
+                };
+            }
+            return null;
+        }
+
         async function fetchWeatherData({ latitude, longitude, city }) {
             const params = new URLSearchParams();
             if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
@@ -2338,7 +2354,8 @@
             params.set('units', 'metric');
             params.set('lang', 'pt_br');
 
-            const url = `/api/weather?${params.toString()}`;
+            const base = getApiBase();
+            const url = `${base}/api/weather?${params.toString()}`;
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error('Falha ao obter dados meteorológicos.');
@@ -2369,7 +2386,8 @@
         }
 
         function buildClimateSeries(data, startDate) {
-            const hourlyData = data?.hourly?.time?.length ? data.hourly : buildFallbackHourlyData(data, startDate);
+            const normalizedHourly = normalizeHourlySeries(data);
+            const hourlyData = normalizedHourly?.time?.length ? normalizedHourly : buildFallbackHourlyData(data, startDate);
             const times = hourlyData?.time || [];
             const temps = hourlyData?.temperature_2m || [];
             const humidity = hourlyData?.relativehumidity_2m || [];
