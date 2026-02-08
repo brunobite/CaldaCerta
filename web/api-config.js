@@ -3,7 +3,9 @@
   const host = window.location.hostname;
   const isLocal = host === 'localhost' || host === '127.0.0.1';
   const isApiHost = host.startsWith('api-');
-  const defaultBase = isLocal || isApiHost ? '' : 'https://api-caldacerta.onrender.com';
+  const defaultBase = isApiHost
+    ? ''
+    : (isLocal ? 'http://localhost:10000' : 'https://api-caldacerta.onrender.com');
   window.API_BASE = window.API_BASE || defaultBase;
 })();
 
