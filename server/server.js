@@ -30,6 +30,7 @@ function generateId() {
 }
 
 function fetchJson(url, options = {}) {
+  const maxRedirects = options.maxRedirects ?? 3;
   return new Promise((resolve, reject) => {
     const requestUrl = new URL(url);
     const transport = requestUrl.protocol === 'http:' ? http : https;
@@ -45,6 +46,18 @@ function fetchJson(url, options = {}) {
 
     const req = transport.get(requestUrl, requestOptions, (res) => {
       let data = '';
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        if (maxRedirects <= 0) {
+          const error = new Error(`HTTP ${res.statusCode}`);
+          error.statusCode = res.statusCode;
+          error.body = data;
+          reject(error);
+          return;
+        }
+        const redirectUrl = new URL(res.headers.location, requestUrl).toString();
+        resolve(fetchJson(redirectUrl, { ...options, maxRedirects: maxRedirects - 1 }));
+        return;
+      }
       res.on('data', (chunk) => {
         data += chunk;
       });
