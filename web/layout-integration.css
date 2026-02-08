@@ -28,10 +28,10 @@
 
 .card {
     background: white;
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 1.5rem;
-    box-shadow: 0 4px 16px rgba(15, 62, 92, 0.08);
-    border: 1px solid rgba(26, 122, 62, 0.1);
+    box-shadow: 0 10px 25px rgba(15, 62, 92, 0.05);
+    border: 1px solid rgba(26, 122, 62, 0.08);
     transition: all 0.3s ease;
 }
 
@@ -45,8 +45,8 @@
    ============================================ */
 
 .menu-card {
-    background: linear-gradient(135deg, white 0%, #fafbfc 100%);
-    border: 2px solid rgba(26, 122, 62, 0.15);
+    background: white;
+    border: 1px solid rgba(26, 122, 62, 0.12);
     cursor: pointer;
     position: relative;
     overflow: hidden;
@@ -54,9 +54,10 @@
     display: flex;
     align-items: center;
     gap: 1.5rem;
-    padding: 1.25rem;
-    border-radius: 12px;
-    transition: all 0.3s ease;
+    padding: 1.5rem;
+    border-radius: 16px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
 .menu-card::before {
