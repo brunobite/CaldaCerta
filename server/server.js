@@ -5,6 +5,7 @@ const http = require('http');
 const https = require('https');
 const zlib = require('zlib');
 const path = require('path');
+const cors = require('cors');
 const app = express();
 
 const DATA_DIR = path.join(__dirname, 'data');
@@ -13,6 +14,40 @@ const WEATHER_CACHE_TTL_MS = Number(process.env.WEATHER_CACHE_TTL_MS) || 3 * 60 
 const weatherCache = new Map();
 const GEOCODE_CACHE_TTL_MS = Number(process.env.GEOCODE_CACHE_TTL_MS) || 24 * 60 * 60 * 1000;
 const geocodeCache = new Map();
+
+const ALLOWED_ORIGINS = new Set([
+  'https://caldacerta.onrender.com',
+  'http://localhost:5500',
+  'http://localhost:10000',
+]);
+const isDev = process.env.NODE_ENV !== 'production';
+
+app.use((req, res, next) => {
+  if (isDev) {
+    const origin = req.headers.origin || 'sem-origin';
+    console.log(`[request] ${req.method} ${req.path} origin=${origin}`);
+  }
+  next();
+});
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    if (ALLOWED_ORIGINS.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Origem não permitida pelo CORS.'));
+  },
+  methods: ['GET', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+};
+
+app.use(cors(corsOptions));
+app.options('/api/*', cors(corsOptions));
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -244,6 +279,10 @@ app.use(express.static(__dirname));
 // 🔧 API endpoints
 app.get('/api/status', (req, res) => {
   res.json({ status: 'OK', message: 'CaldaCerta Pro Online' });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
 app.get('/api/weather', async (req, res) => {
@@ -529,6 +568,17 @@ app.put('/api/simulacoes/:id', async (req, res) => {
     console.error('Erro ao atualizar simulação:', error);
     res.status(500).json({ error: 'Erro ao atualizar simulação' });
   }
+});
+
+app.use((err, req, res, next) => {
+  if (err && err.message && err.message.includes('CORS')) {
+    res.status(403).json({ error: 'Origem não permitida.' });
+    return;
+  }
+  if (isDev) {
+    console.error('Erro interno:', err);
+  }
+  next(err);
 });
 
 // 3. Para todas as outras rotas, servir index.html (Single Page App)

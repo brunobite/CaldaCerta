@@ -2349,27 +2349,39 @@
         }
 
         async function fetchWeatherData({ latitude, longitude, city, state, country }) {
-            const params = new URLSearchParams();
+            const params = [];
+            const addParam = (key, value) => {
+                if (value === undefined || value === null || value === '') return;
+                params.push(`${key}=${encodeURIComponent(String(value))}`);
+            };
             if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-                params.set('lat', latitude);
-                params.set('lon', longitude);
+                addParam('lat', latitude);
+                addParam('lon', longitude);
             }
             if (city) {
-                params.set('city', city);
+                addParam('city', city);
             }
             if (state) {
-                params.set('state', state);
+                addParam('state', state);
             }
             if (country) {
-                params.set('country', country);
+                addParam('country', country);
             }
             const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
-            params.set('hours', CLIMATE_HOURS);
-            params.set('tz', timezone);
+            addParam('hours', CLIMATE_HOURS);
+            addParam('tz', timezone);
 
             const base = getApiBase();
-            const url = `${base}/api/weather?${params.toString()}`;
-            const response = await fetch(url);
+            const url = `${base}/api/weather?${params.join('&')}`;
+            let response;
+            try {
+                response = await fetch(url);
+            } catch (error) {
+                const networkError = new Error('Serviço de clima indisponível no momento.');
+                networkError.userMessage = '❌ Serviço de clima indisponível no momento.';
+                networkError.originalError = error;
+                throw networkError;
+            }
             if (!response.ok) {
                 throw new Error('Falha ao obter dados meteorológicos.');
             }
@@ -2480,7 +2492,8 @@
                 showToast('✅ Clima atualizado via Open-Meteo.', 'success');
             } catch (error) {
                 console.error(error);
-                showToast('❌ Erro ao atualizar clima. Tente novamente.', 'error');
+                const message = error?.userMessage || '❌ Erro ao atualizar clima. Tente novamente.';
+                showToast(message, 'error');
             }
         };
 
@@ -2562,7 +2575,8 @@
                 }
             } catch (e) {
                 console.warn('Erro ao buscar coordenadas:', e);
-                showToast('❌ Erro ao buscar coordenadas da cidade.', 'error');
+                const message = e?.userMessage || '❌ Erro ao buscar coordenadas da cidade.';
+                showToast(message, 'error');
             }
         };
 
