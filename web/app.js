@@ -20,7 +20,13 @@
 };
 
     // Inicializar Firebase
-    firebase.initializeApp(firebaseConfig);
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+    } catch (error) {
+        console.error('❌ Erro ao inicializar Firebase:', error);
+    }
     
     // Criar referências globais
     window.auth = firebase.auth();
@@ -41,6 +47,9 @@
         } else {
             console.log('[Offline] Firebase desconectado - usando cache local');
         }
+    }, (error) => {
+        window._firebaseConnected = false;
+        console.error('❌ Erro ao monitorar conexão Firebase:', error);
     });
 
     console.log('🔥 Firebase inicializado com sucesso!');
@@ -356,7 +365,11 @@
             const base = getApiBase();
             const uidParam = !isUserAdmin && currentUserData ? `?uid=${encodeURIComponent(currentUserData.uid)}` : '';
             const url = `${base}/api/simulacoes${uidParam}`;
-            return fetchJson(url);
+            const data = await fetchJson(url);
+            if (!Array.isArray(data)) {
+                throw new Error('Resposta inválida da API de simulações');
+            }
+            return data;
         }
 
         async function loadHistoryFromFirebase() {
@@ -411,6 +424,14 @@
                 } catch (error) {
                     console.warn('⚠️ Falha ao carregar histórico do servidor, usando Firebase.', error);
                     historicalData = await loadHistoryFromFirebase();
+                }
+
+                if (historicalData.length === 0) {
+                    const firebaseData = await loadHistoryFromFirebase();
+                    if (firebaseData.length > 0) {
+                        console.warn('⚠️ Histórico vazio no servidor, usando Firebase.');
+                        historicalData = firebaseData;
+                    }
                 }
 
                 renderHistoryList(historicalData);
