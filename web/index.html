@@ -348,10 +348,10 @@
 
                     <label class="label-text">Buscar por Estado / Cidade</label>
                     <div class="city-search-row">
-                        <select id="clima_estado" onchange="onEstadoChange()">
+                        <select id="clima_estado">
                             <option value="">Estado (UF)</option>
                         </select>
-                        <select id="clima_cidade" onchange="onCidadeChange()">
+                        <select id="clima_cidade">
                             <option value="">Cidade</option>
                         </select>
                     </div>
@@ -371,12 +371,12 @@
                             <i class="fa-solid fa-location-crosshairs mr-1"></i>
                             Usar localização
                         </button>
-                        <button type="button" class="btn btn-primary btn-full" onclick="refreshClimate()">
+                        <button type="button" class="btn btn-primary btn-full" id="clima_atualizar">
                             <i class="fa-solid fa-rotate mr-1"></i>
                             Atualizar
                         </button>
                     </div>
-                    <p class="text-xs text-slate-500 mt-2">Dados meteorológicos via OpenWeatherMap (proxy no backend). Atualize para recalcular Delta T.</p>
+                    <p class="text-xs text-slate-500 mt-2">Dados meteorológicos via Open-Meteo (previsão horária gratuita).</p>
                 </div>
                 <h3 class="font-bold text-lg mb-4 text-slate-700">
                     <i class="fa-solid fa-chart-line text-teal-600 mr-2"></i>

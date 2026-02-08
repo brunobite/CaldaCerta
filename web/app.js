@@ -2342,31 +2342,54 @@
             return `${day}/${month} ${timePart.slice(0, 5)}`;
         }
 
-        function normalizeHourlySeries(data) {
+        function normalizeHourlyEntries(data) {
             if (Array.isArray(data?.hourly) && data.hourly.length) {
-                const time = data.hourly.map((item) => item.time || (item.dt ? new Date(item.dt * 1000).toISOString() : null));
-                const deltaT = data.hourly.map((item) => {
-                    const value = Number(item.deltaT ?? item.delta_t);
-                    return Number.isFinite(value) ? value : null;
-                });
-                return {
-                    time,
-                    temperature_2m: data.hourly.map((item) => Number(item.temperature ?? item.temp ?? 0)),
-                    relativehumidity_2m: data.hourly.map((item) => Number(item.humidity ?? item.relative_humidity ?? 0)),
-                    windspeed_10m: data.hourly.map((item) => Number(item.wind_speed ?? item.wind_speed_10m ?? 0)),
-                    precipitation: data.hourly.map((item) => Number(item.precipitation ?? 0)),
-                    dew_point: data.hourly.map((item) => Number(item.dew_point ?? item.dew_point_2m ?? 0)),
-                    deltaT,
-                };
+                return data.hourly.map((item) => {
+                    const temperature = Number(item.temperature ?? item.temp ?? 0);
+                    const humidity = Number(item.humidity ?? item.relative_humidity ?? 0);
+                    const dewPointValue = Number(item.dew_point ?? item.dew_point_2m);
+                    const dewPoint = Number.isFinite(dewPointValue)
+                        ? dewPointValue
+                        : computeDewPoint(temperature, humidity || 50);
+                    return {
+                        time: item.time || (item.dt ? new Date(item.dt * 1000).toISOString() : null),
+                        temperature,
+                        humidity,
+                        precipitation: Number(item.precipitation ?? 0),
+                        wind_speed: Number(item.wind_speed ?? item.wind_speed_10m ?? 0),
+                        dew_point: dewPoint,
+                        deltaT: Number(item.deltaT ?? item.delta_t)
+                    };
+                }).filter(item => item.time);
             }
-            if (data?.hourly?.time?.length) return data.hourly;
-            if (data?.hourly_series?.time?.length) return data.hourly_series;
-            return null;
+            if (data?.hourly?.time?.length) {
+                return data.hourly.time.map((time, idx) => ({
+                    time,
+                    temperature: Number(data.hourly.temperature_2m?.[idx] ?? 0),
+                    humidity: Number(data.hourly.relativehumidity_2m?.[idx] ?? 0),
+                    precipitation: Number(data.hourly.precipitation?.[idx] ?? 0),
+                    wind_speed: Number(data.hourly.windspeed_10m?.[idx] ?? 0),
+                    dew_point: Number(data.hourly.dew_point?.[idx] ?? 0),
+                    deltaT: Number(data.hourly.deltaT?.[idx])
+                }));
+            }
+            if (data?.hourly_series?.time?.length) {
+                return data.hourly_series.time.map((time, idx) => ({
+                    time,
+                    temperature: Number(data.hourly_series.temperature_2m?.[idx] ?? 0),
+                    humidity: Number(data.hourly_series.relativehumidity_2m?.[idx] ?? 0),
+                    precipitation: Number(data.hourly_series.precipitation?.[idx] ?? 0),
+                    wind_speed: Number(data.hourly_series.windspeed_10m?.[idx] ?? 0),
+                    dew_point: Number(data.hourly_series.dew_point?.[idx] ?? 0),
+                    deltaT: Number(data.hourly_series.deltaT?.[idx])
+                }));
+            }
+            return [];
         }
 
         async function geocodeOpenMeteo(city, state) {
             const name = `${city}, ${state}, BR`;
-            const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=10&language=pt&format=json`;
+            const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=pt&format=json`;
             let response;
             try {
                 response = await fetch(url);
@@ -2383,8 +2406,8 @@
             return data?.results?.[0] || null;
         }
 
-        async function fetchOpenMeteoForecast({ latitude, longitude, startDate }) {
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&hourly=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,dew_point_2m&forecast_days=2&timezone=America%2FSao_Paulo`;
+        async function fetchOpenMeteoForecast({ latitude, longitude }) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&hourly=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,dew_point_2m&forecast_days=7&timezone=America%2FSao_Paulo`;
             let response;
             try {
                 response = await fetch(url);
@@ -2398,37 +2421,39 @@
                 throw new Error('Falha ao obter dados meteorológicos.');
             }
             const data = await response.json();
-            const hourly = data?.hourly;
+            const hourly = data?.hourly || {};
             const times = hourly?.time || [];
             const temperatures = hourly?.temperature_2m || [];
             const humidity = hourly?.relative_humidity_2m || [];
             const precipitation = hourly?.precipitation || [];
             const windSpeed = hourly?.wind_speed_10m || [];
             const dewPoint = hourly?.dew_point_2m || [];
-            const start = startDate ?? new Date();
-            const startIndex = Math.max(times.findIndex(t => new Date(t) >= start), 0);
 
-            const hourlyData = Array.from({ length: CLIMATE_HOURS }, (_, idx) => {
-                const index = startIndex + idx;
-                const tempValue = Number(temperatures[index] ?? 0);
-                const humidityValue = Number(humidity[index] ?? 0);
-                const dewPointValue = Number(dewPoint[index]);
+            const hourlyData = times.map((time, idx) => {
+                const tempValue = Number(temperatures[idx] ?? 0);
+                const humidityValue = Number(humidity[idx] ?? 0);
+                const dewPointValue = Number(dewPoint[idx]);
                 const calculatedDewPoint = Number.isFinite(dewPointValue)
                     ? dewPointValue
                     : computeDewPoint(tempValue, humidityValue || 50);
 
                 return {
-                    time: times[index],
+                    time,
                     temperature: tempValue,
                     humidity: humidityValue,
-                    precipitation: Number(precipitation[index] ?? 0),
-                    wind_speed: Number(windSpeed[index] ?? 0),
+                    precipitation: Number(precipitation[idx] ?? 0),
+                    wind_speed: Number(windSpeed[idx] ?? 0),
                     dew_point: calculatedDewPoint,
                     deltaT: Number.isFinite(tempValue)
                         ? Number((tempValue - calculatedDewPoint).toFixed(2))
                         : null
                 };
             }).filter(item => item.time);
+
+            if (hourlyData.length) {
+                console.debug('[Clima] Primeira hora retornada:', hourlyData[0].time);
+                console.debug('[Clima] Última hora retornada:', hourlyData[hourlyData.length - 1].time);
+            }
 
             return {
                 hourly: hourlyData,
@@ -2441,70 +2466,109 @@
             };
         }
 
-        function buildFallbackHourlyData(data, startDate) {
+        function buildFallbackHourlyEntries(data, startDate) {
             const baseDate = startDate ?? new Date();
-            const hours = Array.from({ length: CLIMATE_HOURS }, (_, idx) => {
+            return Array.from({ length: CLIMATE_HOURS }, (_, idx) => {
                 const next = new Date(baseDate);
                 next.setHours(next.getHours() + idx);
-                return next.toISOString();
+                const currentTemp = Number(data?.hourly?.[0]?.temperature ?? data?.current?.temp ?? data?.daily?.[0]?.temp_max ?? 0);
+                const humidityValue = Number(data?.hourly?.[0]?.humidity ?? data?.current?.humidity ?? 50);
+                const windValue = Number(data?.hourly?.[0]?.wind_speed ?? data?.current?.wind_speed ?? 0);
+                const precipValue = Number(data?.hourly?.[0]?.precipitation ?? data?.daily?.[0]?.pop ?? 0);
+                const dewPointValue = computeDewPoint(currentTemp, humidityValue || 50);
+                return {
+                    time: next.toISOString(),
+                    temperature: currentTemp,
+                    humidity: humidityValue,
+                    precipitation: precipValue,
+                    wind_speed: windValue,
+                    dew_point: dewPointValue,
+                    deltaT: Number((currentTemp - dewPointValue).toFixed(2))
+                };
             });
-
-            const currentTemp = Number(data?.hourly?.[0]?.temperature ?? data?.current?.temp ?? data?.daily?.[0]?.temp_max ?? 0);
-            const humidityValue = Number(data?.hourly?.[0]?.humidity ?? data?.current?.humidity ?? 50);
-            const windValue = Number(data?.hourly?.[0]?.wind_speed ?? data?.current?.wind_speed ?? 0);
-            const precipValue = Number(data?.hourly?.[0]?.precipitation ?? data?.daily?.[0]?.pop ?? 0);
-
-            return {
-                time: hours,
-                temperature_2m: hours.map(() => currentTemp),
-                relativehumidity_2m: hours.map(() => humidityValue),
-                windspeed_10m: hours.map(() => windValue),
-                precipitation: hours.map(() => precipValue),
-            };
         }
 
-        function buildClimateSeries(data, startDate) {
-            const normalizedHourly = normalizeHourlySeries(data);
-            const hourlyData = normalizedHourly?.time?.length ? normalizedHourly : buildFallbackHourlyData(data, startDate);
-            const times = hourlyData?.time || [];
-            const temps = hourlyData?.temperature_2m || [];
-            const humidity = hourlyData?.relativehumidity_2m || [];
-            const winds = hourlyData?.windspeed_10m || [];
-            const precipitation = hourlyData?.precipitation || [];
-            const dewPoints = hourlyData?.dew_point || [];
-            const deltaTSeries = hourlyData?.deltaT || [];
-            if (!times.length) return null;
+        function parseApplicationDate(value) {
+            if (!value || typeof value !== 'string') return null;
+            if (value.includes('/')) {
+                const [day, month, year] = value.split('/');
+                if (!day || !month || !year) return null;
+                const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+            }
+            if (value.includes('-')) {
+                const [year, month, day] = value.split('-');
+                if (!day || !month || !year) return null;
+                const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+            }
+            const parsed = new Date(value);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
 
-            const start = startDate ?? new Date();
-            const end = new Date(start);
-            end.setDate(end.getDate() + 1);
-            const startIndex = Math.max(times.findIndex(t => new Date(t) >= start), 0);
-            const endIndex = Math.max(times.findIndex(t => new Date(t) >= end), startIndex + CLIMATE_HOURS);
-            const sliceTimes = times.slice(startIndex, endIndex);
-            const sliceTemps = temps.slice(startIndex, endIndex);
-            const sliceHumidity = humidity.slice(startIndex, endIndex);
-            const sliceWinds = winds.slice(startIndex, endIndex);
-            const slicePrecip = precipitation.slice(startIndex, endIndex);
-            const sliceDewPoints = dewPoints.slice(startIndex, endIndex);
-            const sliceDeltaT = deltaTSeries.slice(startIndex, endIndex);
+        function selectHourlyWindow(hourlyEntries, applicationDate) {
+            if (!hourlyEntries.length) {
+                return { entries: [], mode: 'sem dados' };
+            }
 
-            const labels = sliceTimes.map((time) => formatLocalHourlyLabel(time));
-            const deltaT = sliceTemps.map((temp, idx) => {
-                const provided = Number(sliceDeltaT[idx]);
-                if (Number.isFinite(provided)) return provided;
-                const dewPointValue = Number(sliceDewPoints[idx]);
-                if (Number.isFinite(dewPointValue)) {
-                    return Number((temp - dewPointValue).toFixed(2));
+            const now = new Date();
+            const parsedTimes = hourlyEntries.map(item => new Date(item.time));
+            let mode = 'fallback próximas 24h';
+            let entries = [];
+
+            if (applicationDate instanceof Date && !Number.isNaN(applicationDate.getTime())) {
+                const dayStart = new Date(applicationDate);
+                dayStart.setHours(0, 0, 0, 0);
+                const dayEnd = new Date(dayStart);
+                dayEnd.setDate(dayEnd.getDate() + 1);
+                const withinRange = parsedTimes.some(time => time >= dayStart && time < dayEnd);
+
+                if (withinRange) {
+                    entries = hourlyEntries.filter((_, idx) => {
+                        const time = parsedTimes[idx];
+                        return time >= dayStart && time < dayEnd;
+                    }).slice(0, CLIMATE_HOURS);
+                    if (entries.length === CLIMATE_HOURS) {
+                        mode = 'data dentro do alcance';
+                        return { entries, mode };
+                    }
                 }
-                return computeDeltaT(temp, sliceHumidity[idx] ?? 50);
+            }
+
+            const startIndex = Math.max(parsedTimes.findIndex(time => time >= now), 0);
+            entries = hourlyEntries.slice(startIndex, startIndex + CLIMATE_HOURS);
+            return { entries, mode };
+        }
+
+        function buildClimateSeries(data, selectedEntries) {
+            const hourlyEntries = selectedEntries?.length
+                ? selectedEntries
+                : normalizeHourlyEntries(data);
+            if (!hourlyEntries.length) return null;
+
+            const sliceEntries = hourlyEntries.slice(0, CLIMATE_HOURS);
+            const labels = sliceEntries.map((entry) => formatLocalHourlyLabel(entry.time));
+            const temperatures = sliceEntries.map((entry) => Number(entry.temperature ?? 0));
+            const humidity = sliceEntries.map((entry) => Number(entry.humidity ?? 0));
+            const winds = sliceEntries.map((entry) => Number(entry.wind_speed ?? 0));
+            const precipitation = sliceEntries.map((entry) => Number(entry.precipitation ?? 0));
+            const deltaT = sliceEntries.map((entry, idx) => {
+                const provided = Number(entry.deltaT);
+                if (Number.isFinite(provided)) return provided;
+                const dewPointValue = Number(entry.dew_point);
+                const tempValue = temperatures[idx];
+                if (Number.isFinite(dewPointValue)) {
+                    return Number((tempValue - dewPointValue).toFixed(2));
+                }
+                return computeDeltaT(tempValue, humidity[idx] ?? 50);
             });
 
             return {
                 labels,
-                temperatures: sliceTemps,
-                humidity: sliceHumidity,
-                winds: sliceWinds,
-                precipitation: slicePrecip,
+                temperatures,
+                humidity,
+                winds,
+                precipitation,
                 deltaT,
                 source: data?.source || 'open-meteo'
             };
@@ -2516,7 +2580,7 @@
             const latitude = parseFloat(latField.value);
             const longitude = parseFloat(lonField.value);
             const applicationDateValue = document.getElementById('id_data').value;
-            const applicationDate = applicationDateValue ? new Date(`${applicationDateValue}T00:00:00`) : new Date();
+            const applicationDate = parseApplicationDate(applicationDateValue) || new Date();
 
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
                 showToast('❌ Informe latitude e longitude válidas.', 'error');
@@ -2525,8 +2589,17 @@
 
             try {
                 showToast('⏳ Buscando dados meteorológicos...', 'success');
-                const data = await fetchOpenMeteoForecast({ latitude, longitude, startDate: applicationDate });
-                const series = buildClimateSeries(data, applicationDate);
+                const data = await fetchOpenMeteoForecast({ latitude, longitude });
+                const hourlyEntries = normalizeHourlyEntries(data);
+                const selection = selectHourlyWindow(hourlyEntries, applicationDate);
+
+                console.debug('[Clima] Modo usado:', selection.mode);
+
+                if (selection.mode === 'fallback próximas 24h') {
+                    showToast('⚠️ Previsão horária disponível apenas para os próximos 7 dias.', 'warning');
+                }
+
+                const series = buildClimateSeries(data, selection.entries.length ? selection.entries : buildFallbackHourlyEntries(data, new Date()));
                 if (!series) {
                     showToast('❌ Dados meteorológicos indisponíveis.', 'error');
                     return;
@@ -2588,6 +2661,7 @@
                 cidadeSelect.innerHTML = '<option value="">Cidade</option>';
                 return;
             }
+            console.debug('[Clima] UF selecionada:', uf);
             try {
                 const resp = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);
                 const cidades = await resp.json();
@@ -2598,22 +2672,33 @@
                     opt.textContent = c.nome;
                     cidadeSelect.appendChild(opt);
                 });
+                if (cidades.length) {
+                    cidadeSelect.value = cidades[0].nome;
+                    await window.updateClimateFromSelection();
+                }
             } catch (e) {
                 console.warn('Erro ao carregar cidades:', e);
                 cidadeSelect.innerHTML = '<option value="">Erro ao carregar</option>';
             }
         };
 
-        window.onCidadeChange = async () => {
+        window.updateClimateFromSelection = async () => {
             const cidade = document.getElementById('clima_cidade').value;
             const uf = document.getElementById('clima_estado').value;
-            if (!cidade || !uf) return;
+            if (!cidade || !uf) {
+                refreshClimate();
+                return;
+            }
+            console.debug('[Clima] UF/Cidade selecionadas:', `${uf}/${cidade}`);
             try {
                 showToast('⏳ Buscando coordenadas...', 'success');
                 const location = await geocodeOpenMeteo(cidade, uf);
                 if (location?.latitude && location?.longitude) {
-                    document.getElementById('clima_lat').value = Number(location.latitude).toFixed(4);
-                    document.getElementById('clima_lon').value = Number(location.longitude).toFixed(4);
+                    const lat = Number(location.latitude).toFixed(4);
+                    const lon = Number(location.longitude).toFixed(4);
+                    document.getElementById('clima_lat').value = lat;
+                    document.getElementById('clima_lon').value = lon;
+                    console.debug('[Clima] lat/lon obtidos:', `${lat}, ${lon}`);
                     showToast(`✅ Coordenadas de ${cidade}/${uf} preenchidas.`, 'success');
                     refreshClimate();
                 } else {
@@ -2633,7 +2718,13 @@
 
             const toast = document.createElement('div');
             toast.className = 'toast';
-            toast.style.background = type === 'error' ? '#dc2626' : '#15803d';
+            if (type === 'error') {
+                toast.style.background = '#dc2626';
+            } else if (type === 'warning') {
+                toast.style.background = '#d97706';
+            } else {
+                toast.style.background = '#15803d';
+            }
             toast.innerHTML = message;
             document.body.appendChild(toast);
 
@@ -2653,6 +2744,19 @@
 
             document.getElementById('produto-banco').style.display = 'block';
             document.getElementById('produto-form').style.display = 'block';
+
+            const estadoSelect = document.getElementById('clima_estado');
+            const cidadeSelect = document.getElementById('clima_cidade');
+            const atualizarBtn = document.getElementById('clima_atualizar');
+            if (estadoSelect) {
+                estadoSelect.addEventListener('change', window.onEstadoChange);
+            }
+            if (cidadeSelect) {
+                cidadeSelect.addEventListener('change', window.updateClimateFromSelection);
+            }
+            if (atualizarBtn) {
+                atualizarBtn.addEventListener('click', window.updateClimateFromSelection);
+            }
 
             const latField = document.getElementById('clima_lat');
             const lonField = document.getElementById('clima_lon');
