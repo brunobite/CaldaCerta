@@ -37,7 +37,18 @@
     <div id="auth-overlay">
         <div class="auth-box">
             <div class="auth-header-login">
-                <h1>🌿 CaldaCerta</h1>
+                <div class="brand-logo brand-logo-large" aria-label="CaldaCerta">
+                    <span class="brand-mark" aria-hidden="true">
+                        <svg viewBox="0 0 64 64" role="img" focusable="false">
+                            <path d="M32 6c10 8 16 17 16 26 0 10-7 18-16 20-9-2-16-10-16-20 0-9 6-18 16-26z" fill="#2f9f4a"/>
+                            <path d="M32 20c4 6 6 12 6 17 0 6-3 10-6 11-3-1-6-5-6-11 0-5 2-11 6-17z" fill="#4cc36b"/>
+                            <path d="M32 18c-2 9-2 20 0 30" stroke="#1f7a3b" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span class="brand-name">
+                        <span class="brand-blue">Calda</span><span class="brand-green">Certa</span>
+                    </span>
+                </div>
                 <p style="color: #78716c;">Sistema Profissional de Gestão Agrícola</p>
             </div>
 
@@ -89,8 +100,19 @@
     <!-- HEADER UNIFICADO -->
     <nav>
         <div class="nav-container">
-            <h1 class="logo text-white" onclick="navTo('menu')">
-                CALDA<span class="logo-accent">CERTA</span>
+            <h1 class="logo" onclick="navTo('menu')">
+                <span class="brand-logo" aria-label="CaldaCerta">
+                    <span class="brand-mark" aria-hidden="true">
+                        <svg viewBox="0 0 64 64" role="img" focusable="false">
+                            <path d="M32 6c10 8 16 17 16 26 0 10-7 18-16 20-9-2-16-10-16-20 0-9 6-18 16-26z" fill="#2f9f4a"/>
+                            <path d="M32 20c4 6 6 12 6 17 0 6-3 10-6 11-3-1-6-5-6-11 0-5 2-11 6-17z" fill="#4cc36b"/>
+                            <path d="M32 18c-2 9-2 20 0 30" stroke="#1f7a3b" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </span>
+                    <span class="brand-name">
+                        <span class="brand-blue">Calda</span><span class="brand-green">Certa</span>
+                    </span>
+                </span>
             </h1>
             <div class="header-right">
                 <div class="header-user-compact">
@@ -112,7 +134,7 @@
         <!-- MENU PRINCIPAL -->
         <section id="step-menu" class="step-content active">
             <div class="py-16 text-center">
-                <div class="w-20 mx-auto mb-6" style="background: linear-gradient(135deg, #14b8a6, #0f766e); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(15, 118, 110, 0.3);">
+                <div class="w-20 mx-auto mb-6" style="background: linear-gradient(135deg, var(--primary-light), var(--primary)); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(47, 159, 74, 0.3);">
                     <i class="fa-solid fa-droplet text-4xl text-white"></i>
                 </div>
                 <h2 class="text-4xl font-black text-slate-900 mb-2">Gestão de Caldas</h2>
