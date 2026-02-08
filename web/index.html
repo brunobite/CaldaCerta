@@ -583,15 +583,15 @@
                     <span class="font-bold">Voltar aos Produtos</span>
                 </button>
 
-                <button onclick="generatePDF()" class="btn btn-secondary">
-                    <i class="fa-solid fa-file-pdf text-red-600 text-xl"></i>
-                    <span class="font-bold">Gerar PDF</span>
+                <button id="btn-save-cloud" onclick="saveSimulation()" class="btn btn-secondary">
+                    <i class="fa-solid fa-save text-xl"></i>
+                    <span class="font-bold">Salvar</span>
                 </button>
             </div>
 
-            <button id="btn-save-cloud" onclick="saveSimulation()" class="btn btn-primary btn-full mb-6">
-                <i class="fa-solid fa-save text-xl"></i>
-                Salvar Simulação Completa
+            <button onclick="generatePDF()" class="btn btn-primary btn-full mb-6">
+                <i class="fa-solid fa-file-pdf text-xl"></i>
+                Gerar PDF e Salvar
             </button>
 
             <button onclick="navTo('menu')" class="btn btn-full py-4 text-slate-500 font-bold uppercase text-sm transition-colors" style="background: transparent; border: none;">

@@ -384,8 +384,9 @@
                 const allItems = [];
 
                 Object.entries(data).forEach(([uid, sims]) => {
-                    if (!sims) return;
+                    if (!sims || typeof sims !== 'object') return;
                     Object.entries(sims).forEach(([id, sim]) => {
+                        if (!sim || typeof sim !== 'object') return;
                         allItems.push({
                             id,
                             uid,
@@ -436,27 +437,40 @@
                     return;
                 }
 
+                // Firebase é a fonte primária de dados
                 try {
-                    historicalData = await loadHistoryFromServer();
-                    console.log(`✅ ${historicalData.length} simulações carregadas do servidor`);
-                } catch (error) {
-                    console.warn('⚠️ Falha ao carregar histórico do servidor, usando Firebase.', error);
                     historicalData = await loadHistoryFromFirebase();
+                    console.log(`✅ ${historicalData.length} simulações carregadas do Firebase`);
+                } catch (error) {
+                    console.warn('⚠️ Falha ao carregar do Firebase:', error);
+                    historicalData = [];
                 }
 
+                // Se Firebase vazio, tentar servidor como fallback
                 if (historicalData.length === 0) {
-                    const firebaseData = await loadHistoryFromFirebase();
-                    if (firebaseData.length > 0) {
-                        console.warn('⚠️ Histórico vazio no servidor, usando Firebase.');
-                        historicalData = firebaseData;
+                    try {
+                        const serverData = await loadHistoryFromServer();
+                        if (serverData.length > 0) {
+                            console.log(`✅ ${serverData.length} simulações encontradas no servidor (fallback)`);
+                            historicalData = serverData;
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Servidor indisponível:', e.message);
                     }
                 }
+
+                // Ordenar por data mais recente
+                historicalData.sort((a, b) => {
+                    const dateA = new Date(a.updatedAt || a.createdAt || a.data_aplicacao || 0);
+                    const dateB = new Date(b.updatedAt || b.createdAt || b.data_aplicacao || 0);
+                    return dateB - dateA;
+                });
 
                 renderHistoryList(historicalData);
             } catch (e) {
                 console.error('Erro ao carregar histórico:', e);
                 historicalData = [];
-                showToast('⚠️ Erro ao carregar histórico', 'error');
+                renderHistoryList(historicalData);
             }
         }
 
@@ -551,67 +565,31 @@
         async function saveSimulationToServer(payload) {
             const base = getApiBase();
             const now = new Date().toISOString();
-            const editingAllowed = currentEditingSimulation && currentEditingSimulation.source === 'server';
             const body = {
                 ...payload,
                 uid: currentUserData?.uid || null,
                 userEmail: currentUserData?.email || '',
                 updatedAt: now,
-                createdAt: editingAllowed ? currentEditingSimulation.createdAt || now : now
+                createdAt: now
             };
 
-            const method = (editingAllowed && currentEditingSimulation?.id) ? 'PUT' : 'POST';
-            const url = (editingAllowed && currentEditingSimulation?.id)
-                ? `${base}/api/simulacoes/${currentEditingSimulation.id}`
-                : `${base}/api/simulacoes`;
+            const url = `${base}/api/simulacoes`;
             const headers = { 'Content-Type': 'application/json' };
             const bodyStr = JSON.stringify(body);
 
-            // Se estiver offline, enfileirar para sincronização posterior
+            // Se estiver offline, enfileirar para sincronização posterior (backup silencioso)
             if (!navigator.onLine) {
-                await OfflineSync.enqueue(url, method, headers, bodyStr);
-                showToast('📱 Simulação salva localmente - será sincronizada ao reconectar', 'success');
+                await OfflineSync.enqueue(url, 'POST', headers, bodyStr);
                 return { queued: true };
             }
 
-            return fetchJson(url, { method, headers, body: bodyStr });
+            return fetchJson(url, { method: 'POST', headers, body: bodyStr });
         }
 
-        window.saveSimulation = async () => {
-            if (!validateRequiredField('id_cliente', '❌ Preencha o nome do cliente')) {
-                return;
-            }
-            if (!validateRequiredField('id_cultura', '❌ Selecione a cultura')) {
-                return;
-            }
-            if (!validatePositiveNumber('id_area', '❌ Informe uma área válida')) {
-                return;
-            }
-            if (!validatePositiveNumber('eq_tanque', '❌ Informe a capacidade do tanque')) {
-                return;
-            }
-            if (!validatePositiveNumber('eq_vazao', '❌ Informe a vazão do equipamento')) {
-                return;
-            }
-            if (!validateRange('agua_ph', 0, 14, '❌ O pH da água deve estar entre 0 e 14')) {
-                return;
-            }
-            if (!validateRange('calda_ph', 0, 14, '❌ O pH da calda deve estar entre 0 e 14')) {
-                return;
-            }
-
-            if (products.length === 0) {
-                showToast('❌ Adicione pelo menos um produto', 'error');
-                return;
-            }
-
+        // Função interna para construir o payload do formulário
+        function _buildSimulationPayload() {
             syncProductObservationsFromDom();
-
-            const btn = document.getElementById('btn-save-cloud');
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
-
-            const payload = {
+            return {
                 cliente: document.getElementById('id_cliente').value,
                 propriedade: document.getElementById('id_propriedade').value,
                 talhao: document.getElementById('id_talhao').value,
@@ -634,46 +612,75 @@
                 criterio_ordenacao: document.getElementById('criterioOrdenacao').value,
                 produtos: products
             };
+        }
+
+        // Função interna para salvar payload no Firebase (fonte primária)
+        async function _savePayloadToFirebase(payload) {
+            if (!currentUserData) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const now = new Date().toISOString();
+            const isEditing = currentEditingSimulation &&
+                (isUserAdmin || currentEditingSimulation.uid === currentUserData.uid);
+
+            if (isEditing && currentEditingSimulation?.id) {
+                const editUid = currentEditingSimulation.uid || currentUserData.uid;
+                await db.ref(`simulacoes/${editUid}/${currentEditingSimulation.id}`).update({
+                    ...payload,
+                    userEmail: currentEditingSimulation.userEmail || currentUserData.email,
+                    updatedAt: now,
+                    createdAt: currentEditingSimulation.createdAt || now
+                });
+            } else {
+                await db.ref(`simulacoes/${currentUserData.uid}`).push({
+                    ...payload,
+                    userEmail: currentUserData.email,
+                    createdAt: now,
+                    updatedAt: now
+                });
+            }
+
+            currentEditingSimulation = null;
+
+            // Tentar salvar no servidor também como backup (não bloqueia)
+            saveSimulationToServer(payload).catch(e => {
+                console.warn('⚠️ Backup no servidor falhou (Firebase é primário):', e.message);
+            });
+        }
+
+        // Validação dos campos do formulário
+        function _validateSimulationFields() {
+            if (!validateRequiredField('id_cliente', '❌ Preencha o nome do cliente')) return false;
+            if (!validateRequiredField('id_cultura', '❌ Selecione a cultura')) return false;
+            if (!validatePositiveNumber('id_area', '❌ Informe uma área válida')) return false;
+            if (!validatePositiveNumber('eq_tanque', '❌ Informe a capacidade do tanque')) return false;
+            if (!validatePositiveNumber('eq_vazao', '❌ Informe a vazão do equipamento')) return false;
+            if (!validateRange('agua_ph', 0, 14, '❌ O pH da água deve estar entre 0 e 14')) return false;
+            if (!validateRange('calda_ph', 0, 14, '❌ O pH da calda deve estar entre 0 e 14')) return false;
+            if (products.length === 0) {
+                showToast('❌ Adicione pelo menos um produto', 'error');
+                return false;
+            }
+            if (!currentUserData) {
+                showToast('❌ Você precisa estar logado!', 'error');
+                return false;
+            }
+            return true;
+        }
+
+        window.saveSimulation = async () => {
+            if (!_validateSimulationFields()) return;
+
+            const btn = document.getElementById('btn-save-cloud');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
 
             try {
-                if (!currentUserData) {
-                    showToast('❌ Você precisa estar logado!', 'error');
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
-                    return;
-                }
+                const payload = _buildSimulationPayload();
 
-                let savedOnServer = false;
-                try {
-                    await saveSimulationToServer(payload);
-                    savedOnServer = true;
-                    currentEditingSimulation = null;
-                } catch (error) {
-                    console.warn('⚠️ Falha ao salvar no servidor, tentando Firebase.', error);
-                }
-
-                if (!savedOnServer) {
-                    const now = new Date().toISOString();
-                    const editingAllowed = currentEditingSimulation && (isUserAdmin || currentEditingSimulation.uid === currentUserData.uid);
-                    const targetUid = editingAllowed ? currentEditingSimulation.uid : currentUserData.uid;
-                    const targetRef = db.ref(`simulacoes/${targetUid}`);
-
-                    if (editingAllowed && currentEditingSimulation?.id) {
-                        await targetRef.child(currentEditingSimulation.id).update({
-                            ...payload,
-                            userEmail: currentEditingSimulation.userEmail || currentUserData.email,
-                            updatedAt: now,
-                            createdAt: currentEditingSimulation.createdAt || now
-                        });
-                        currentEditingSimulation = null;
-                    } else {
-                        await targetRef.push({
-                            ...payload,
-                            userEmail: currentUserData.email,
-                            createdAt: now
-                        });
-                    }
-                }
+                // Firebase é a fonte primária de dados
+                await _savePayloadToFirebase(payload);
 
                 showToast('✅ Simulação salva com sucesso!', 'success');
                 btn.innerHTML = '<i class="fa-solid fa-check"></i> Salvo com Sucesso';
@@ -685,7 +692,7 @@
                 console.error('Erro ao salvar:', e);
                 showToast('❌ Erro ao salvar simulação', 'error');
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação Completa';
+                btn.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação';
             }
         };
 
@@ -714,27 +721,29 @@
                 const date = item.data_aplicacao ? new Date(item.data_aplicacao).toLocaleDateString('pt-BR') : 'Data não informada';
                 const prodCount = getProdutoCount(item);
                 const adminInfo = isUserAdmin ? `<span class="badge badge-accent">Usuário: ${item.userEmail || item.uid || 'N/D'}</span>` : '';
-                const adminEditButton = isUserAdmin ? `
+
+                // Todos os usuários podem editar suas próprias simulações
+                const editButton = `
                     <button class="btn btn-secondary text-xs" onclick="event.stopPropagation(); viewSimulation('${item.id}', '${item.uid || ''}')">
                         <i class="fa-solid fa-pen mr-1"></i> Editar
                     </button>
-                ` : '';
+                `;
 
                 return `
                     <div class="card card-medium history-card" onclick="viewSimulation('${item.id}', '${item.uid || ''}')">
                         <div class="flex justify-between items-start mb-3">
                             <div>
-                                <h4 class="font-black text-xl text-slate-800 mb-1">${item.cliente}</h4>
-                                <p class="text-sm text-slate-600">${item.propriedade} - ${item.talhao}</p>
+                                <h4 class="font-black text-xl text-slate-800 mb-1">${item.cliente || 'Sem cliente'}</h4>
+                                <p class="text-sm text-slate-600">${item.propriedade || ''} - ${item.talhao || ''}</p>
                             </div>
                             <div class="flex flex-col items-end gap-2">
-                                <span class="badge badge-primary">${item.cultura}</span>
-                                ${adminEditButton}
+                                <span class="badge badge-primary">${item.cultura || 'N/D'}</span>
+                                ${editButton}
                             </div>
                         </div>
                         <div class="history-meta text-sm text-slate-500">
                             <span><i class="fa-solid fa-calendar mr-1"></i>${date}</span>
-                            <span><i class="fa-solid fa-map-marked-alt mr-1"></i>${item.area} ha</span>
+                            <span><i class="fa-solid fa-map-marked-alt mr-1"></i>${item.area || 0} ha</span>
                             <span><i class="fa-solid fa-box mr-1"></i>${prodCount} produto${prodCount !== 1 ? 's' : ''}</span>
                         </div>
                         ${adminInfo ? `<div class="mt-2 text-xs text-slate-500">${adminInfo}</div>` : ''}
@@ -772,25 +781,26 @@
 
                 const ownerUid = uidOverride || currentUserData.uid;
                 let item = null;
-                let loadedFromServer = false;
 
-                try {
-                    item = await fetchSimulationFromServer(id, ownerUid);
-                    loadedFromServer = true;
-                } catch (error) {
-                    console.warn('⚠️ Falha ao carregar simulação do servidor, usando Firebase.', error);
-                }
+                // Firebase é a fonte primária
+                const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
+                const snapshot = await simRef.once('value');
+                item = snapshot.val();
 
-                if (!item) {
-                    const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
-                    const snapshot = await simRef.once('value');
-                    item = snapshot.val();
-                }
-
+                // Fallback: estrutura legada
                 if (!item) {
                     const legacyRef = db.ref('simulacoes/' + id);
                     const legacySnapshot = await legacyRef.once('value');
                     item = legacySnapshot.val();
+                }
+
+                // Fallback: servidor
+                if (!item) {
+                    try {
+                        item = await fetchSimulationFromServer(id, ownerUid);
+                    } catch (error) {
+                        console.warn('⚠️ Servidor indisponível:', error.message);
+                    }
                 }
 
                 if (!item) {
@@ -835,7 +845,7 @@
                     uid: ownerUid,
                     userEmail: item.userEmail || '',
                     createdAt: item.createdAt || '',
-                    source: loadedFromServer ? 'server' : 'firebase'
+                    source: 'firebase'
                 };
 
                 renderProductList();
@@ -869,9 +879,11 @@
             }
             if (steps[currentStepIdx] === '2-6') {
                 const btnSave = document.getElementById('btn-save-cloud');
-                btnSave.disabled = false;
-                btnSave.innerHTML = '<i class="fa-solid fa-save text-xl"></i> Salvar Simulação';
-                btnSave.classList.remove('opacity-50');
+                if (btnSave) {
+                    btnSave.disabled = false;
+                    btnSave.innerHTML = '<i class="fa-solid fa-save text-xl"></i> <span class="font-bold">Salvar</span>';
+                    btnSave.classList.remove('opacity-50');
+                }
                 renderOrdem();
             }
 
@@ -1558,9 +1570,32 @@
             return { liberado, atencao, naoAplicar, summary, stats: { libCount, attCount, bloqCount, pctLib, pctAtt, pctBloq } };
         }
 
-        // PDF
-        window.generatePDF = () => {
+        // PDF + Salvamento unificado
+        window.generatePDF = async () => {
             syncProductObservationsFromDom();
+
+            // Salvar automaticamente no Firebase ao gerar PDF
+            if (currentUserData && products.length > 0) {
+                try {
+                    const payload = _buildSimulationPayload();
+                    await _savePayloadToFirebase(payload);
+                    console.log('✅ Simulação salva automaticamente ao gerar PDF');
+
+                    // Atualizar botão de salvar
+                    const btnSave = document.getElementById('btn-save-cloud');
+                    if (btnSave) {
+                        btnSave.innerHTML = '<i class="fa-solid fa-check"></i> Salvo';
+                        btnSave.classList.add('opacity-50');
+                        btnSave.disabled = true;
+                    }
+
+                    // Recarregar histórico em background
+                    loadHistory().catch(() => {});
+                } catch (saveError) {
+                    console.warn('⚠️ Erro ao salvar antes de gerar PDF:', saveError);
+                }
+            }
+
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
 
@@ -2001,7 +2036,7 @@
             doc.setTextColor(0, 0, 0);
 
             doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
-            showToast('✅ PDF completo gerado com sucesso!', 'success');
+            showToast('✅ PDF gerado e simulação salva!', 'success');
         };
 
         // Gráficos
@@ -2503,8 +2538,8 @@
             // ✅ Mostra o modo real (local/remoto) e permite trocar
             atualizarBadgeModo();
 
-            initBancosDados();
-            loadHistory();
+            // initBancosDados e loadHistory são chamados pelo auth.onAuthStateChanged
+            // Não carregar aqui pois o usuário ainda não está autenticado
             carregarEstados();
 
             document.getElementById('produto-banco').style.display = 'block';
@@ -2548,6 +2583,8 @@
                 if (typeof initBancosDados === 'function') {
                     initBancosDados();
                 }
+                // Sincronizar fila do servidor pendente
+                OfflineSync.processQueue().catch(() => {});
             }
         });
 
@@ -2681,22 +2718,6 @@
                     document.getElementById('auth-overlay').classList.add('hidden');
                     document.getElementById('main-app').classList.add('show');
                     
-                    // Manter dados sincronizados para offline (quando suportado)
-                    const tryKeepSynced = (refPath) => {
-                        try {
-                            const ref = db.ref(refPath);
-                            if (typeof ref.keepSynced === 'function') {
-                                ref.keepSynced(true);
-                            }
-                        } catch (syncError) {
-                            console.warn('⚠️ keepSynced não suportado no Firebase Web:', syncError);
-                        }
-                    };
-
-                    tryKeepSynced('simulacoes/' + user.uid);
-                    tryKeepSynced('produtos/' + user.uid);
-                    tryKeepSynced('users/' + user.uid);
-
                     // Inicializar sistema
                     if (typeof initBancosDados === 'function') {
                         initBancosDados();
@@ -2723,4 +2744,3 @@
         });
 
         console.log('🌿 CaldaCerta Pro com Sistema de Login - PRONTO!');
-        console.log('📧 Admin: bitencourttec@gmail.com / Senha: 123456');
