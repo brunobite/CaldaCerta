@@ -1791,7 +1791,7 @@
             doc.text(`Origem: ${origem}`, waterLeftX, waterLeftY);
             waterLeftY += 6;
 
-            doc.text(`pH na calda: ${caldaPh}`, waterRightX, waterRightY);
+            doc.text(`pH final da calda: ${caldaPh}`, waterRightX, waterRightY);
             waterRightY += 6;
             doc.text('Observações:', waterRightX, waterRightY);
             waterRightY += 4;
@@ -2387,25 +2387,6 @@
             return [];
         }
 
-        async function geocodeOpenMeteo(city, state) {
-            const name = `${city}, ${state}, BR`;
-            const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=pt&format=json`;
-            let response;
-            try {
-                response = await fetch(url);
-            } catch (error) {
-                const networkError = new Error('Serviço de clima indisponível no momento.');
-                networkError.userMessage = '❌ Serviço de clima indisponível no momento.';
-                networkError.originalError = error;
-                throw networkError;
-            }
-            if (!response.ok) {
-                throw new Error('Falha ao obter dados de geolocalização.');
-            }
-            const data = await response.json();
-            return data?.results?.[0] || null;
-        }
-
         async function fetchOpenMeteoForecast({ latitude, longitude }) {
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&hourly=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,dew_point_2m&forecast_days=7&timezone=America%2FSao_Paulo`;
             let response;
@@ -2464,6 +2445,25 @@
                 },
                 source: 'open-meteo'
             };
+        }
+
+        function validateHourlySeries(hourlyEntries) {
+            if (!Array.isArray(hourlyEntries) || hourlyEntries.length < 2) {
+                return { valid: false, reason: 'Série horária ausente ou incompleta.' };
+            }
+            const toleranceMs = 5 * 60 * 1000;
+            for (let i = 0; i < hourlyEntries.length - 1; i += 1) {
+                const current = new Date(hourlyEntries[i].time);
+                const next = new Date(hourlyEntries[i + 1].time);
+                if (Number.isNaN(current.getTime()) || Number.isNaN(next.getTime())) {
+                    return { valid: false, reason: 'Horário inválido na série horária.' };
+                }
+                const diff = Math.abs(next.getTime() - current.getTime());
+                if (Math.abs(diff - 3600000) > toleranceMs) {
+                    return { valid: false, reason: `Intervalo inválido entre ${hourlyEntries[i].time} e ${hourlyEntries[i + 1].time}.` };
+                }
+            }
+            return { valid: true };
         }
 
         function buildFallbackHourlyEntries(data, startDate) {
@@ -2583,7 +2583,7 @@
             const applicationDate = parseApplicationDate(applicationDateValue) || new Date();
 
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-                showToast('❌ Informe latitude e longitude válidas.', 'error');
+                showToast('❌ Informe latitude/longitude ou use a localização.', 'error');
                 return;
             }
 
@@ -2591,6 +2591,11 @@
                 showToast('⏳ Buscando dados meteorológicos...', 'success');
                 const data = await fetchOpenMeteoForecast({ latitude, longitude });
                 const hourlyEntries = normalizeHourlyEntries(data);
+                const hourlyValidation = validateHourlySeries(hourlyEntries);
+                if (!hourlyValidation.valid) {
+                    console.error('[Clima] Série horária inválida:', hourlyValidation.reason);
+                    showToast('⚠️ Fonte não retornou série horária. Verifique parâmetros.', 'warning');
+                }
                 const selection = selectHourlyWindow(hourlyEntries, applicationDate);
 
                 console.debug('[Clima] Modo usado:', selection.mode);
@@ -2635,82 +2640,6 @@
             );
         };
 
-        // ✅ BUSCA POR ESTADO / CIDADE
-        async function carregarEstados() {
-            const select = document.getElementById('clima_estado');
-            if (!select) return;
-            try {
-                const resp = await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome');
-                const estados = await resp.json();
-                estados.forEach(uf => {
-                    const opt = document.createElement('option');
-                    opt.value = uf.sigla;
-                    opt.textContent = uf.sigla + ' - ' + uf.nome;
-                    select.appendChild(opt);
-                });
-            } catch (e) {
-                console.warn('Erro ao carregar estados:', e);
-            }
-        }
-
-        window.onEstadoChange = async () => {
-            const uf = document.getElementById('clima_estado').value;
-            const cidadeSelect = document.getElementById('clima_cidade');
-            cidadeSelect.innerHTML = '<option value="">Carregando...</option>';
-            if (!uf) {
-                cidadeSelect.innerHTML = '<option value="">Cidade</option>';
-                return;
-            }
-            console.debug('[Clima] UF selecionada:', uf);
-            try {
-                const resp = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);
-                const cidades = await resp.json();
-                cidadeSelect.innerHTML = '<option value="">Selecione a cidade</option>';
-                cidades.forEach(c => {
-                    const opt = document.createElement('option');
-                    opt.value = c.nome;
-                    opt.textContent = c.nome;
-                    cidadeSelect.appendChild(opt);
-                });
-                if (cidades.length) {
-                    cidadeSelect.value = cidades[0].nome;
-                    await window.updateClimateFromSelection();
-                }
-            } catch (e) {
-                console.warn('Erro ao carregar cidades:', e);
-                cidadeSelect.innerHTML = '<option value="">Erro ao carregar</option>';
-            }
-        };
-
-        window.updateClimateFromSelection = async () => {
-            const cidade = document.getElementById('clima_cidade').value;
-            const uf = document.getElementById('clima_estado').value;
-            if (!cidade || !uf) {
-                refreshClimate();
-                return;
-            }
-            console.debug('[Clima] UF/Cidade selecionadas:', `${uf}/${cidade}`);
-            try {
-                showToast('⏳ Buscando coordenadas...', 'success');
-                const location = await geocodeOpenMeteo(cidade, uf);
-                if (location?.latitude && location?.longitude) {
-                    const lat = Number(location.latitude).toFixed(4);
-                    const lon = Number(location.longitude).toFixed(4);
-                    document.getElementById('clima_lat').value = lat;
-                    document.getElementById('clima_lon').value = lon;
-                    console.debug('[Clima] lat/lon obtidos:', `${lat}, ${lon}`);
-                    showToast(`✅ Coordenadas de ${cidade}/${uf} preenchidas.`, 'success');
-                    refreshClimate();
-                } else {
-                    showToast('❌ Local não encontrado.', 'error');
-                }
-            } catch (e) {
-                console.warn('Erro ao buscar coordenadas:', e);
-                const message = e?.userMessage || '❌ Erro ao buscar coordenadas da cidade.';
-                showToast(message, 'error');
-            }
-        };
-
         // Toast
         function showToast(message, type = 'success') {
             const existing = document.querySelector('.toast');
@@ -2740,22 +2669,12 @@
 
             // initBancosDados e loadHistory são chamados pelo auth.onAuthStateChanged
             // Não carregar aqui pois o usuário ainda não está autenticado
-            carregarEstados();
-
             document.getElementById('produto-banco').style.display = 'block';
             document.getElementById('produto-form').style.display = 'block';
 
-            const estadoSelect = document.getElementById('clima_estado');
-            const cidadeSelect = document.getElementById('clima_cidade');
             const atualizarBtn = document.getElementById('clima_atualizar');
-            if (estadoSelect) {
-                estadoSelect.addEventListener('change', window.onEstadoChange);
-            }
-            if (cidadeSelect) {
-                cidadeSelect.addEventListener('change', window.updateClimateFromSelection);
-            }
             if (atualizarBtn) {
-                atualizarBtn.addEventListener('click', window.updateClimateFromSelection);
+                atualizarBtn.addEventListener('click', refreshClimate);
             }
 
             const latField = document.getElementById('clima_lat');
