@@ -1,0 +1,14 @@
+{
+  "name": "caldacerta-firestore-import",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Importador XLSX para Firestore (produtos_catalogo)",
+  "main": "import_xlsx_to_firestore.js",
+  "scripts": {
+    "import": "node import_xlsx_to_firestore.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "xlsx": "^0.18.5"
+  }
+}

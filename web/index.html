@@ -23,6 +23,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
 <!-- Configuração Firebase INLINE -->
 
@@ -440,17 +441,22 @@
                 <div class="mb-4 flex items-center justify-between">
                     <h3 class="text-sm font-bold text-slate-700 uppercase">Adicionar Produto</h3>
                     <button onclick="toggleNovoOuBanco()" class="text-xs font-bold text-teal-600 hover:text-teal-800 transition-colors" style="background:transparent;border:none;cursor:pointer;">
-                        <i class="fa-solid fa-exchange-alt mr-1"></i>
+                        <i class="fa-solid fa-plus mr-1"></i>
                         <span id="toggle-text">Produto Novo</span>
                     </button>
                 </div>
 
                 <!-- Seleção do Banco de Dados -->
-                <div id="produto-banco" class="mb-6">
+                <div id="produto-banco" class="mb-6 produto-banco-container">
                     <label class="label-text">Buscar no Banco de Produtos</label>
-                    <select id="p_banco" class="input-box" onchange="preencherDoBanco()">
-                        <option value="">-- Selecione um produto --</option>
-                    </select>
+                    <input
+                        type="text"
+                        id="p_banco_busca"
+                        class="input-box"
+                        placeholder="Digite para buscar no catálogo ou nos seus produtos"
+                        autocomplete="off"
+                    >
+                    <div id="p_banco_resultados" class="produto-resultados hidden"></div>
                     <p class="text-xs text-slate-500 mt-2">Selecione um produto e informe a dose abaixo</p>
                 </div>
 
@@ -467,7 +473,7 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-3 mb-6">
+                    <div class="grid grid-2 mb-6">
                         <div>
                             <label class="label-text">Formulação *</label>
                             <select id="p_formulacao" class="input-box" required>
@@ -492,9 +498,17 @@
                                 <option value="OLEO">Óleo Mineral/Vegetal</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="grid grid-2 mb-6">
                         <div>
                             <label class="label-text">pH FISPQ</label>
                             <input type="number" id="p_ph" class="input-box" placeholder="Ex: 6.5" step="0.1" min="0" max="14">
+                        </div>
+                        <div>
+                            <label class="label-text">URL FISPQ</label>
+                            <input type="url" id="p_url_fispq" class="input-box" placeholder="https://..." oninput="updateFispqLink()">
+                            <div id="p_fispq_link" class="text-xs text-slate-500 mt-2">FISPQ: não informado</div>
                         </div>
                     </div>
 
@@ -517,6 +531,39 @@
                 <p class="mt-2">Adicione produtos para continuar</p>
             </div>
         </section>
+
+        <div id="modal-produto-novo" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-produto-novo-title">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 id="modal-produto-novo-title" class="text-lg font-black text-slate-800">Produto novo</h3>
+                    <button class="btn btn-icon" type="button" onclick="closeProdutoNovoModal()">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-4">
+                        <label class="label-text">Nome Comercial *</label>
+                        <input type="text" id="novo_produto_nome" class="input-box" placeholder="Ex: Glifosato 480" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="label-text">Empresa *</label>
+                        <input type="text" id="novo_produto_empresa" class="input-box" placeholder="Ex: Empresa XYZ" required>
+                    </div>
+                    <div class="mb-4">
+                        <label class="label-text">pH FISPQ</label>
+                        <input type="number" id="novo_produto_ph" class="input-box" placeholder="Ex: 6.5" step="0.1" min="0" max="14">
+                    </div>
+                    <div class="mb-4">
+                        <label class="label-text">URL FISPQ</label>
+                        <input type="url" id="novo_produto_url" class="input-box" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" type="button" onclick="closeProdutoNovoModal()">Cancelar</button>
+                    <button class="btn btn-primary" type="button" onclick="salvarProdutoUsuario()">Salvar</button>
+                </div>
+            </div>
+        </div>
 
         <!-- ETAPA 2.6: FINALIZAÇÃO -->
         <section id="step-2-6" class="step-content">
