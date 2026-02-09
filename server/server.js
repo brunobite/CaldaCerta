@@ -44,7 +44,7 @@ const corsOptions = {
     }
     callback(new Error('Origem não permitida pelo CORS.'));
   },
-  methods: ['GET', 'OPTIONS'],
+  methods: ['GET', 'OPTIONS', 'POST'],
   allowedHeaders: ['Content-Type'],
 };
 
@@ -199,6 +199,19 @@ function normalizeTexto(valor) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeKey(valor) {
+  return (valor || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -408,6 +421,13 @@ app.get('/api/produtos', (req, res) => {
       filePath,
     });
   }
+});
+
+app.post('/api/produtos/ph-lookup-log', (req, res) => {
+  const { nome, key, total } = req.body || {};
+  const computedKey = key || normalizeKey(nome);
+  console.log(`[ph-lookup] nome=${nome || ''} key=${computedKey || ''} total=${total ?? 'n/a'}`);
+  res.json({ ok: true });
 });
 
 app.get('/health', (req, res) => {
