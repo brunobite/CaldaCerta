@@ -32,8 +32,6 @@
     window.auth = firebase.auth();
     window.database = firebase.database();
     
-    // Constante do Admin
-    window.ADMIN_EMAIL = 'bitencourttec@gmail.com';
 
     // Habilitar persistência offline do Realtime Database
     firebase.database().goOnline();
@@ -53,7 +51,6 @@
     });
 
     console.log('🔥 Firebase inicializado com sucesso!');
-    console.log('📧 Para criar conta admin use: bitencourttec@gmail.com');
 
 // Objeto API mock para não quebrar código legado
     window.API = window.API || {};
@@ -426,6 +423,18 @@
             }
         }
 
+        async function fetchCatalogoProdutosByTerm(termo) {
+            if (!window.productsService?.searchCatalogoProdutosByTerm) {
+                return [];
+            }
+            try {
+                return await window.productsService.searchCatalogoProdutosByTerm(termo, { limit: 50 });
+            } catch (error) {
+                console.warn('⚠️ Falha ao carregar catálogo global:', error);
+                return [];
+            }
+        }
+
         async function buscarProdutosTypeahead(termo) {
             const searchInput = document.getElementById('p_banco_busca');
             const filtro = normalizeTexto(termo);
@@ -438,6 +447,7 @@
             try {
                 renderProdutoResultados([], 'Carregando...', true);
                 const userProdutos = await fetchUserProdutosByTerm(filtro);
+                const catalogoProdutos = await fetchCatalogoProdutosByTerm(filtro);
                 let apiProdutos = [];
 
                 if (shouldUseRemoteApi()) {
@@ -467,7 +477,11 @@
                     }
                 }
 
-                const merged = [...userProdutos, ...(Array.isArray(apiProdutos) ? apiProdutos : [])];
+                const merged = [
+                    ...userProdutos,
+                    ...catalogoProdutos,
+                    ...(Array.isArray(apiProdutos) ? apiProdutos : [])
+                ];
                 produtoResultados = merged;
                 renderProdutoResultados(produtoResultados, 'Nenhum produto encontrado', true);
 
@@ -586,7 +600,7 @@
             }
 
             try {
-                await window.productsService.saveProdutoRTDB({
+                await window.productsService.saveUserProdutoRTDB({
                     nomeComercial: nome,
                     empresa: empresa,
                     tipoProduto: tipoProduto,
@@ -594,7 +608,25 @@
                     urlFispq: urlFispq || ''
                 });
 
-                showToast('✅ Produto salvo no seu catálogo', 'success');
+                showToast('✅ Produto salvo no seu catálogo pessoal', 'success');
+
+                if (isUserAdmin) {
+                    try {
+                        await window.productsService.saveGlobalProdutoRTDB({
+                            nomeComercial: nome,
+                            empresa: empresa,
+                            tipoProduto: tipoProduto,
+                            phFispq: Number.isFinite(phValor) ? phValor : null,
+                            urlFispq: urlFispq || ''
+                        });
+                        showToast('✅ Produto salvo no catálogo global', 'success');
+                    } catch (error) {
+                        console.error('Erro ao salvar no catálogo global:', error);
+                        showToast('❌ Erro ao salvar no catálogo global', 'error');
+                    }
+                } else {
+                    showToast('⚠️ Sem permissão para salvar no catálogo global', 'warning');
+                }
 
                 document.getElementById('p_nome').value = nome;
                 document.getElementById('p_marca').value = empresa;
@@ -608,7 +640,10 @@
 
                 const searchInput = document.getElementById('p_banco_busca');
                 if (searchInput) {
-                    searchInput.value = `${nome} (${empresa})`;
+                    if (!searchInput.value.trim()) {
+                        searchInput.value = `${nome} (${empresa})`;
+                    }
+                    buscarProdutosTypeahead(searchInput.value);
                 }
 
                 document.getElementById('novo_produto_nome').value = '';
@@ -3147,10 +3182,9 @@
 // ========================================
         // USAR FIREBASE JÁ INICIALIZADO NO HEAD
         // ========================================
-        // As variáveis auth, database e ADMIN_EMAIL já foram criadas globalmente
+        // As variáveis auth e database já foram criadas globalmente
         const auth = window.auth;
         const db = window.database;
-        const ADMIN_EMAIL = window.ADMIN_EMAIL;
         
         let currentUserData = null;
         let isUserAdmin = false;
@@ -3236,7 +3270,7 @@
                 await db.ref('users/' + user.uid).set({
                     name: name,
                     email: email,
-                    isAdmin: email === ADMIN_EMAIL,
+                    isAdmin: false,
                     createdAt: new Date().toISOString()
                 });
 
@@ -3291,13 +3325,11 @@
                 try {
                     const snapshot = await db.ref('users/' + user.uid).once('value');
                     const userData = snapshot.val();
-                    isUserAdmin = userData?.isAdmin || user.email === ADMIN_EMAIL;
+                    isUserAdmin = userData?.isAdmin === true;
                     
                     // Atualizar UI
                     document.getElementById('user-email-display').textContent = user.email;
-                    if (isUserAdmin) {
-                        document.getElementById('admin-badge-display').style.display = 'inline-block';
-                    }
+                    document.getElementById('admin-badge-display').style.display = isUserAdmin ? 'inline-block' : 'none';
 
                     // Atualizar footer com informações do usuário
                     const footerName = document.getElementById('user-name-footer');
@@ -3331,6 +3363,7 @@
                 isUserAdmin = false;
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-app').classList.remove('show');
+                document.getElementById('admin-badge-display').style.display = 'none';
             }
         });
 
