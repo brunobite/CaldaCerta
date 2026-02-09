@@ -31,7 +31,6 @@
     // Criar referências globais
     window.auth = firebase.auth();
     window.database = firebase.database();
-    window.firestore = firebase.firestore();
     
     // Constante do Admin
     window.ADMIN_EMAIL = 'bitencourttec@gmail.com';
@@ -274,7 +273,10 @@
             document.getElementById('p_dose').value = '';
             setTimeout(() => { document.getElementById('p_dose').focus(); }, 100);
 
-            buscarPhFispqPorNome(produto.nomeComercial || '');
+            const hasPh = Number.isFinite(parsePhValue(produto.phFispq));
+            if (!hasPh && !produto.urlFispq) {
+                buscarPhFispqPorNome(produto.nomeComercial || '');
+            }
         };
 
         function setupProdutoSearch() {
@@ -316,28 +318,7 @@
             });
         }
 
-        function normalizeTexto(valor) {
-            return (valor || '')
-                .toString()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .toLowerCase()
-                .replace(/\s+/g, ' ')
-                .trim();
-        }
-
-        function normalizeKey(valor) {
-            return (valor || '')
-                .toString()
-                .trim()
-                .toLowerCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/\s+/g, ' ')
-                .replace(/[^a-z0-9 ]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-        }
+        const { normalizeKey, normalizeTexto } = window.productsService || {};
 
         function parsePhValue(rawValue) {
             if (rawValue === null || rawValue === undefined) {
@@ -370,8 +351,11 @@
         }
 
         async function buscarPhFispqPorNome(nome) {
-            const firestore = window.firestore;
-            if (!firestore) {
+            if (!shouldUseRemoteApi()) {
+                return;
+            }
+            const base = getApiBase();
+            if (!base || !normalizeKey) {
                 return;
             }
             const key = normalizeKey(nome);
@@ -382,31 +366,43 @@
             }
 
             try {
-                const snapshot = await firestore
-                    .collection('produtos_catalogo')
-                    .where('nome_key', '==', key)
-                    .limit(1)
-                    .get();
+                const url = `${base}/api/produtos?query=${encodeURIComponent(nome)}`;
+                const response = await fetch(url, {
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                });
+                const contentType = response.headers.get('content-type') || '';
+                const rawText = await response.text();
 
-                console.log('[PH] resultado docs=', snapshot.size, snapshot.docs[0]?.data());
+                if (contentType.includes('text/html') || rawText.trim().toLowerCase().startsWith('<!doctype') || rawText.trim().toLowerCase().startsWith('<html')) {
+                    throw new Error('API retornou HTML');
+                }
+
+                if (!response.ok) {
+                    throw new Error(`Erro ao acessar API: ${response.status}`);
+                }
+
+                const produtos = rawText ? JSON.parse(rawText) : [];
+                const match = produtos.find((produto) => normalizeKey(produto.nomeComercial || '') === key);
+
                 logPhLookupServer({
                     nome,
                     key,
-                    total: snapshot.size
+                    total: produtos.length
                 });
 
-                if (snapshot.empty) {
+                if (!match) {
                     document.getElementById('p_ph').value = '';
                     showToast('Produto não localizado no banco', 'warning');
                     return;
                 }
 
-                const data = snapshot.docs[0].data() || {};
-                const phValue = parsePhValue(data.phFispq);
+                const phValue = parsePhValue(match.phFispq);
                 document.getElementById('p_ph').value = formatPhValue(phValue);
 
-                if (data.urlFispq) {
-                    document.getElementById('p_url_fispq').value = data.urlFispq;
+                if (match.urlFispq) {
+                    document.getElementById('p_url_fispq').value = match.urlFispq;
                 }
                 updateFispqLink();
 
@@ -418,29 +414,12 @@
             }
         }
 
-        async function fetchUserProdutosByTerm(termo, database) {
-            if (!currentUserData?.uid || !database) {
-                return [];
-            }
-            const key = normalizeKey(termo);
-            if (!key) {
+        async function fetchUserProdutosByTerm(termo) {
+            if (!window.productsService?.searchUserProdutosByTerm) {
                 return [];
             }
             try {
-                const snapshot = await database
-                    .ref('produtos')
-                    .orderByChild('createdBy')
-                    .equalTo(currentUserData.uid)
-                    .once('value');
-                const data = snapshot.val() || {};
-                return Object.entries(data)
-                    .map(([id, produto]) => ({
-                        id,
-                        ...produto,
-                        source: 'usuario'
-                    }))
-                    .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key))
-                    .slice(0, 20);
+                return await window.productsService.searchUserProdutosByTerm(termo, { limit: 50 });
             } catch (error) {
                 console.warn('⚠️ Falha ao carregar produtos do usuário:', error);
                 return [];
@@ -458,8 +437,7 @@
 
             try {
                 renderProdutoResultados([], 'Carregando...', true);
-                const database = window.database;
-                const userProdutos = await fetchUserProdutosByTerm(filtro, database);
+                const userProdutos = await fetchUserProdutosByTerm(filtro);
                 let apiProdutos = [];
 
                 if (shouldUseRemoteApi()) {
@@ -608,17 +586,12 @@
             }
 
             try {
-                const database = window.database;
-                await database.ref('produtos').push({
+                await window.productsService.saveProdutoRTDB({
                     nomeComercial: nome,
                     empresa: empresa,
                     tipoProduto: tipoProduto,
                     phFispq: Number.isFinite(phValor) ? phValor : null,
-                    urlFispq: urlFispq || '',
-                    nome_key: normalizeKey(nome),
-                    nomeNormalizado: normalizeTexto(nome),
-                    createdAt: firebase.database.ServerValue.TIMESTAMP,
-                    createdBy: currentUserData.uid
+                    urlFispq: urlFispq || ''
                 });
 
                 showToast('✅ Produto salvo no seu catálogo', 'success');
