@@ -1,0 +1,14 @@
+{
+  "name": "caldacerta-servidor-import",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pipeline de importação XLSX para Firestore (produtos_catalogo)",
+  "main": "scripts/import_xlsx_to_firestore.js",
+  "scripts": {
+    "import": "node scripts/import_xlsx_to_firestore.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2",
+    "xlsx": "^0.18.5"
+  }
+}
