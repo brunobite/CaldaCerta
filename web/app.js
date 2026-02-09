@@ -225,9 +225,34 @@
         let produtoSearchInitialized = false;
         let produtoSearchTimeout = null;
 
-        window.toggleNovoOuBanco = () => {
-            openProdutoNovoModal();
-        };
+        let produtoSelecionado = null;
+
+        function setProdutoDetalhesReadonly(isReadonly) {
+            const fields = [
+                document.getElementById('p_nome'),
+                document.getElementById('p_marca'),
+                document.getElementById('p_ph'),
+                document.getElementById('p_url_fispq')
+            ];
+            fields.forEach((field) => {
+                if (!field) return;
+                field.readOnly = isReadonly;
+                field.classList.toggle('input-readonly', isReadonly);
+            });
+            const tipoSelect = document.getElementById('p_tipo');
+            if (tipoSelect) {
+                tipoSelect.disabled = isReadonly;
+                tipoSelect.classList.toggle('input-readonly', isReadonly);
+            }
+            const hint = document.getElementById('produto-detalhes-readonly');
+            if (hint) {
+                hint.classList.toggle('hidden', !isReadonly);
+            }
+            const editBtn = document.getElementById('produto-editar-btn');
+            if (editBtn) {
+                editBtn.disabled = !isReadonly;
+            }
+        }
 
         function limparCamposProduto() {
             document.getElementById('p_nome').value = '';
@@ -238,6 +263,8 @@
             document.getElementById('p_formulacao').selectedIndex = 0;
             document.getElementById('p_tipo').selectedIndex = 0;
             updateFispqLink();
+            produtoSelecionado = null;
+            setProdutoDetalhesReadonly(false);
         }
 
         window.selecionarProdutoResultado = (index) => {
@@ -257,6 +284,8 @@
             if (tipoSelect) {
                 tipoSelect.value = tipoProduto || '';
             }
+            produtoSelecionado = produto;
+            setProdutoDetalhesReadonly(true);
 
             const searchInput = document.getElementById('p_banco_busca');
             if (searchInput) {
@@ -276,6 +305,11 @@
             }
         };
 
+        window.editarProdutoSelecionado = () => {
+            produtoSelecionado = null;
+            setProdutoDetalhesReadonly(false);
+        };
+
         function setupProdutoSearch() {
             if (produtoSearchInitialized) {
                 return;
@@ -289,6 +323,10 @@
             searchInput.addEventListener('input', () => {
                 if (produtoSearchTimeout) {
                     clearTimeout(produtoSearchTimeout);
+                }
+                if (!searchInput.value.trim() && produtoSelecionado) {
+                    produtoSelecionado = null;
+                    setProdutoDetalhesReadonly(false);
                 }
                 produtoSearchTimeout = setTimeout(() => {
                     buscarProdutosTypeahead(searchInput.value);
@@ -448,39 +486,10 @@
                 renderProdutoResultados([], 'Carregando...', true);
                 const userProdutos = await fetchUserProdutosByTerm(filtro);
                 const catalogoProdutos = await fetchCatalogoProdutosByTerm(filtro);
-                let apiProdutos = [];
-
-                if (shouldUseRemoteApi()) {
-                    const base = getApiBase();
-                    const url = `${base}/api/produtos?query=${encodeURIComponent(filtro)}`;
-                    const response = await fetch(url, {
-                        headers: {
-                            Accept: 'application/json'
-                        }
-                    });
-                    const contentType = response.headers.get('content-type') || '';
-                    const rawText = await response.text();
-
-                    if (contentType.includes('text/html') || rawText.trim().toLowerCase().startsWith('<!doctype') || rawText.trim().toLowerCase().startsWith('<html')) {
-                        showToast('⚠️ API retornou HTML (rota errada)', 'error');
-                        throw new Error('API retornou HTML');
-                    }
-
-                    if (!response.ok) {
-                        throw new Error(`Erro ao acessar API: ${response.status}`);
-                    }
-
-                    try {
-                        apiProdutos = rawText ? JSON.parse(rawText) : [];
-                    } catch (parseError) {
-                        throw new Error('Resposta inválida da API de produtos');
-                    }
-                }
 
                 const merged = [
                     ...userProdutos,
-                    ...catalogoProdutos,
-                    ...(Array.isArray(apiProdutos) ? apiProdutos : [])
+                    ...catalogoProdutos
                 ];
                 produtoResultados = merged;
                 renderProdutoResultados(produtoResultados, 'Nenhum produto encontrado', true);
@@ -654,8 +663,15 @@
                 updateProdutoNovoSaveState();
                 closeProdutoNovoModal();
             } catch (error) {
+                const errorCode = (error?.code || error?.name || 'erro').toString();
+                const shortCode = errorCode.replace(/[^a-z0-9]/gi, '').slice(0, 6).toLowerCase() || 'erro';
+                const isPermission = errorCode.toUpperCase().includes('PERMISSION');
+                if (isPermission) {
+                    showToast('❌ Sem permissão para gravar no banco', 'error');
+                } else {
+                    showToast(`❌ Erro ao salvar produto. Verifique conexão/permissões. (${shortCode})`, 'error');
+                }
                 console.error('Erro ao salvar produto:', error);
-                showToast('❌ Erro ao salvar produto', 'error');
             }
         };
 

@@ -125,6 +125,13 @@
             border-color: var(--primary-light);
         }
 
+        .input-box.input-readonly {
+            background: #f8fafc;
+            border-color: #cbd5f5;
+            color: #475569;
+            cursor: not-allowed;
+        }
+
         .label-text {
             display: block;
             font-size: 0.65rem;
