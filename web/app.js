@@ -177,7 +177,7 @@
 
             document.getElementById('p_nome').value = produto.nomeComercial || '';
             document.getElementById('p_marca').value = produto.empresa || '';
-            document.getElementById('p_ph').value = produto.phFispq ?? '';
+            document.getElementById('p_ph').value = formatPhValue(produto.phFispq);
             document.getElementById('p_url_fispq').value = produto.urlFispq || '';
             updateFispqLink();
 
@@ -192,6 +192,8 @@
 
             document.getElementById('p_dose').value = '';
             setTimeout(() => { document.getElementById('p_dose').focus(); }, 100);
+
+            buscarPhFispqPorNome(produto.nomeComercial || '');
         };
 
         function setupProdutoSearch() {
@@ -241,6 +243,95 @@
                 .toLowerCase()
                 .replace(/\s+/g, ' ')
                 .trim();
+        }
+
+        function normalizeKey(valor) {
+            return (valor || '')
+                .toString()
+                .trim()
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/\s+/g, ' ')
+                .replace(/[^a-z0-9 ]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function parsePhValue(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return null;
+            }
+            const normalized = rawValue.toString().replace(',', '.').trim();
+            const value = Number(normalized);
+            return Number.isFinite(value) ? value : null;
+        }
+
+        function formatPhValue(value) {
+            return Number.isFinite(value) ? value.toFixed(1) : '';
+        }
+
+        function logPhLookupServer(payload) {
+            const base = getApiBase();
+            if (!base) {
+                return;
+            }
+            fetch(`${base}/api/produtos/ph-lookup-log`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            }).catch(() => {});
+        }
+
+        async function buscarPhFispqPorNome(nome) {
+            const firestore = window.firestore;
+            if (!firestore) {
+                return;
+            }
+            const key = normalizeKey(nome);
+            console.log('[PH] nome=', nome, 'key=', key);
+
+            if (!key) {
+                return;
+            }
+
+            try {
+                const snapshot = await firestore
+                    .collection('produtos_catalogo')
+                    .where('nome_key', '==', key)
+                    .limit(1)
+                    .get();
+
+                console.log('[PH] resultado docs=', snapshot.size, snapshot.docs[0]?.data());
+                logPhLookupServer({
+                    nome,
+                    key,
+                    total: snapshot.size
+                });
+
+                if (snapshot.empty) {
+                    document.getElementById('p_ph').value = '';
+                    showToast('Produto não localizado no banco', 'warning');
+                    return;
+                }
+
+                const data = snapshot.docs[0].data() || {};
+                const phValue = parsePhValue(data.phFispq);
+                document.getElementById('p_ph').value = formatPhValue(phValue);
+
+                if (data.urlFispq) {
+                    document.getElementById('p_url_fispq').value = data.urlFispq;
+                }
+                updateFispqLink();
+
+                if (!Number.isFinite(phValue)) {
+                    showToast('Produto encontrado sem pH', 'warning');
+                }
+            } catch (error) {
+                console.error('❌ Erro ao buscar pH FISPQ:', error);
+            }
         }
 
         async function buscarProdutosTypeahead(termo) {
@@ -357,7 +448,7 @@
 
             const nome = document.getElementById('novo_produto_nome').value.trim();
             const empresa = document.getElementById('novo_produto_empresa').value.trim();
-            const phValor = parseFloat(document.getElementById('novo_produto_ph').value);
+            const phValor = parsePhValue(document.getElementById('novo_produto_ph').value);
             const urlFispq = document.getElementById('novo_produto_url').value.trim();
 
             if (!nome || !empresa) {
@@ -376,6 +467,7 @@
                     empresa: empresa,
                     phFispq: Number.isFinite(phValor) ? phValor : null,
                     urlFispq: urlFispq || '',
+                    nome_key: normalizeKey(nome),
                     ownerUid: currentUserData.uid,
                     nomeNormalizado: normalizeTexto(nome),
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -386,7 +478,7 @@
 
                 document.getElementById('p_nome').value = nome;
                 document.getElementById('p_marca').value = empresa;
-                document.getElementById('p_ph').value = Number.isFinite(phValor) ? phValor : '';
+                document.getElementById('p_ph').value = formatPhValue(phValor);
                 document.getElementById('p_url_fispq').value = urlFispq;
                 updateFispqLink();
 
@@ -1157,7 +1249,7 @@
             const formulacao = document.getElementById('p_formulacao').value;
             const marca = document.getElementById('p_marca').value;
             const tipo = document.getElementById('p_tipo').value;
-            const ph = parseFloat(document.getElementById('p_ph').value) || null;
+            const ph = parsePhValue(document.getElementById('p_ph').value);
             const urlFispq = document.getElementById('p_url_fispq').value.trim();
 
             if (!nome || !Number.isFinite(dose) || dose <= 0) {
@@ -2875,6 +2967,15 @@
             document.getElementById('produto-banco').style.display = 'block';
             document.getElementById('produto-form').style.display = 'block';
             updateFispqLink();
+            const nomeInput = document.getElementById('p_nome');
+            if (nomeInput) {
+                nomeInput.addEventListener('change', () => {
+                    buscarPhFispqPorNome(nomeInput.value);
+                });
+                nomeInput.addEventListener('blur', () => {
+                    buscarPhFispqPorNome(nomeInput.value);
+                });
+            }
 
             const atualizarBtn = document.getElementById('clima_atualizar');
             if (atualizarBtn) {

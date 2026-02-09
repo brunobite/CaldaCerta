@@ -20,6 +20,28 @@ function normalizarTexto(valor) {
     .trim();
 }
 
+function normalizeKey(valor) {
+  return (valor || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parsePhValue(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+  const normalized = rawValue.toString().replace(',', '.').trim();
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : null;
+}
+
 try {
   admin.initializeApp({
     credential: admin.credential.applicationDefault()
@@ -59,8 +81,9 @@ async function importar() {
     batch.set(docRef, {
       nomeComercial,
       empresa,
-      phFispq: Number.isFinite(Number(phFispq)) ? Number(phFispq) : null,
+      phFispq: parsePhValue(phFispq),
       urlFispq: urlFispq || '',
+      nome_key: normalizeKey(nomeComercial),
       nomeNormalizado: normalizarTexto(nomeComercial),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       source: 'xlsx'

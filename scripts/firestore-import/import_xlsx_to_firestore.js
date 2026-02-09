@@ -50,6 +50,28 @@ function normalizarTexto(valor) {
     .trim();
 }
 
+function normalizeKey(valor) {
+  return (valor || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parsePhValue(rawValue) {
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+  const normalized = rawValue.toString().replace(',', '.').trim();
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : null;
+}
+
 function slugifyDocId(nome, empresa) {
   const base = `${normalizarTexto(nome)}__${normalizarTexto(empresa)}`;
   return base.replace(/[^a-z0-9_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -89,8 +111,9 @@ async function importarProdutos(caminhoXlsx) {
     const payload = {
       nomeComercial,
       empresa,
-      phFispq: Number.isFinite(Number(phRaw)) ? Number(phRaw) : null,
+      phFispq: parsePhValue(phRaw),
       urlFispq: urlFispq || '',
+      nome_key: normalizeKey(nomeComercial),
       nomeNormalizado: normalizarTexto(nomeComercial),
       empresaNormalizada: normalizarTexto(empresa),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
