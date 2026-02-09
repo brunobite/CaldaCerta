@@ -31,6 +31,7 @@
     // Criar referências globais
     window.auth = firebase.auth();
     window.database = firebase.database();
+    window.firestore = firebase.firestore();
     
     // Constante do Admin
     window.ADMIN_EMAIL = 'bitencourttec@gmail.com';
@@ -115,26 +116,14 @@
         // Inicializar bancos de dados da API
         async function initBancosDados() {
             try {
-                // Carregar produtos do Firebase (se o usuário estiver logado)
-                if (currentUserData) {
-                    const produtosRef = db.ref('produtos/' + currentUserData.uid);
-                    const snapshot = await produtosRef.once('value');
-                    const produtosData = snapshot.val() || {};
-                    bancoProdutos = Object.keys(produtosData).map(key => ({
-                        id: key,
-                        ...produtosData[key]
-                    }));
-                    console.log(`✅ ${bancoProdutos.length} produtos carregados do Firebase`);
-                } else {
-                    bancoProdutos = [];
-                }
+                bancoProdutos = [];
 
                 // Listas padrão (podem ser expandidas conforme necessário)
                 bancoClientes = [];
                 bancoResponsaveis = [];
                 bancoOperadores = [];
 
-                console.log('✅ Usando Firebase como banco de dados');
+                console.log('✅ Usando Firestore como banco de produtos');
 
                 preencherDatalist('clientes-list', bancoClientes);
                 preencherDatalist('propriedades-list', bancoPropriedades);
@@ -142,7 +131,8 @@
                 preencherDatalist('responsaveis-list', bancoResponsaveis);
                 preencherDatalist('operadores-list', bancoOperadores);
 
-                preencherSelectProdutos();
+                setupProdutoSearch();
+                renderProdutoResultados([], '', false);
 
                 console.log('✅ Bancos de dados Firebase carregados!');
             } catch (error) {
@@ -156,31 +146,16 @@
         }
 
         function preencherSelectProdutos() {
-            const select = document.getElementById('p_banco');
-            select.innerHTML = '<option value="">-- Selecione um produto --</option>' +
-                bancoProdutos.map((p, idx) => `<option value="${idx}">${p.nome} (${p.marca})</option>`).join('');
+            bancoProdutos = [];
+            renderProdutoResultados([], '', false);
         }
 
-        // Toggle entre banco e manual
-        let usandoBanco = true;
-        window.toggleNovoOuBanco = () => {
-            usandoBanco = !usandoBanco;
-            const bancDiv = document.getElementById('produto-banco');
-            const toggleText = document.getElementById('toggle-text');
-            const camposReadonly = ['p_nome', 'p_marca', 'p_formulacao', 'p_tipo'];
+        let produtoResultados = [];
+        let produtoSearchInitialized = false;
+        let produtoSearchTimeout = null;
 
-            if (usandoBanco) {
-                bancDiv.style.display = 'block';
-                toggleText.innerText = 'Produto Novo';
-                document.getElementById('p_banco').selectedIndex = 0;
-                limparCamposProduto();
-            } else {
-                bancDiv.style.display = 'none';
-                toggleText.innerText = 'Buscar no Banco';
-                camposReadonly.forEach(id => { document.getElementById(id).disabled = false; });
-                limparCamposProduto();
-                document.getElementById('p_nome').focus();
-            }
+        window.toggleNovoOuBanco = () => {
+            openProdutoNovoModal();
         };
 
         function limparCamposProduto() {
@@ -188,27 +163,290 @@
             document.getElementById('p_marca').value = '';
             document.getElementById('p_dose').value = '';
             document.getElementById('p_ph').value = '';
+            document.getElementById('p_url_fispq').value = '';
             document.getElementById('p_formulacao').selectedIndex = 0;
             document.getElementById('p_tipo').selectedIndex = 0;
+            updateFispqLink();
         }
 
-        window.preencherDoBanco = () => {
-            const selectIdx = document.getElementById('p_banco').value;
-            if (selectIdx === '') {
-                limparCamposProduto();
+        window.selecionarProdutoResultado = (index) => {
+            const produto = produtoResultados[index];
+            if (!produto) {
                 return;
             }
 
-            const produto = bancoProdutos[parseInt(selectIdx)];
+            document.getElementById('p_nome').value = produto.nomeComercial || '';
+            document.getElementById('p_marca').value = produto.empresa || '';
+            document.getElementById('p_ph').value = produto.phFispq ?? '';
+            document.getElementById('p_url_fispq').value = produto.urlFispq || '';
+            updateFispqLink();
 
-            document.getElementById('p_nome').value = produto.nome;
-            document.getElementById('p_marca').value = produto.marca;
-            document.getElementById('p_formulacao').value = produto.formulacao;
-            document.getElementById('p_tipo').value = produto.tipo;
-            document.getElementById('p_ph').value = produto.ph || '';
+            const searchInput = document.getElementById('p_banco_busca');
+            if (searchInput) {
+                searchInput.value = `${produto.nomeComercial || ''}${produto.empresa ? ` (${produto.empresa})` : ''}`;
+            }
+            const resultados = document.getElementById('p_banco_resultados');
+            if (resultados) {
+                resultados.classList.add('hidden');
+            }
 
             document.getElementById('p_dose').value = '';
             setTimeout(() => { document.getElementById('p_dose').focus(); }, 100);
+        };
+
+        function setupProdutoSearch() {
+            if (produtoSearchInitialized) {
+                return;
+            }
+            const searchInput = document.getElementById('p_banco_busca');
+            if (!searchInput) {
+                return;
+            }
+            produtoSearchInitialized = true;
+
+            searchInput.addEventListener('input', () => {
+                if (produtoSearchTimeout) {
+                    clearTimeout(produtoSearchTimeout);
+                }
+                produtoSearchTimeout = setTimeout(() => {
+                    buscarProdutosTypeahead(searchInput.value);
+                }, 350);
+            });
+
+            searchInput.addEventListener('focus', () => {
+                if (searchInput.value.trim()) {
+                    buscarProdutosTypeahead(searchInput.value);
+                } else {
+                    renderProdutoResultados([], '', false);
+                }
+            });
+
+            document.addEventListener('click', (event) => {
+                const container = document.getElementById('produto-banco');
+                const resultados = document.getElementById('p_banco_resultados');
+                if (!container || !resultados) {
+                    return;
+                }
+                if (!container.contains(event.target)) {
+                    resultados.classList.add('hidden');
+                }
+            });
+        }
+
+        function normalizeTexto(valor) {
+            return (valor || '')
+                .toString()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        async function buscarProdutosTypeahead(termo) {
+            const searchInput = document.getElementById('p_banco_busca');
+            const filtro = normalizeTexto(termo);
+
+            if (!filtro || filtro.length < 2) {
+                renderProdutoResultados([], 'Digite pelo menos 2 caracteres', false);
+                return;
+            }
+
+            const firestore = window.firestore;
+            if (!firestore) {
+                renderProdutoResultados([], 'Firestore não disponível', false);
+                return;
+            }
+
+            try {
+                const prefixo = filtro;
+                const limite = 20;
+                const catalogQuery = firestore.collection('produtos_catalogo')
+                    .where('nomeNormalizado', '>=', prefixo)
+                    .where('nomeNormalizado', '<', prefixo + '\uf8ff')
+                    .orderBy('nomeNormalizado')
+                    .limit(limite);
+
+                const consultas = [catalogQuery.get()];
+
+                if (currentUserData?.uid) {
+                    const userQuery = firestore.collection('produtos_usuarios')
+                        .where('ownerUid', '==', currentUserData.uid)
+                        .where('nomeNormalizado', '>=', prefixo)
+                        .where('nomeNormalizado', '<', prefixo + '\uf8ff')
+                        .orderBy('nomeNormalizado')
+                        .limit(limite);
+                    consultas.push(userQuery.get());
+                }
+
+                const [catalogSnapshot, userSnapshot] = await Promise.all(consultas);
+
+                const resultadosCatalogo = catalogSnapshot.docs.map(doc => ({
+                    id: doc.id,
+                    source: 'catalogo',
+                    ...doc.data()
+                }));
+
+                const resultadosUsuario = userSnapshot
+                    ? userSnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        source: 'usuario',
+                        ...doc.data()
+                    }))
+                    : [];
+
+                const vistos = new Set();
+                const combinados = [];
+
+                const adicionarLista = (lista) => {
+                    lista.forEach(item => {
+                        const chave = `${normalizeTexto(item.nomeComercial)}|${normalizeTexto(item.empresa)}`;
+                        if (!vistos.has(chave)) {
+                            vistos.add(chave);
+                            combinados.push(item);
+                        }
+                    });
+                };
+
+                adicionarLista(resultadosCatalogo);
+                adicionarLista(resultadosUsuario);
+
+                produtoResultados = combinados;
+                renderProdutoResultados(produtoResultados);
+
+                const resultados = document.getElementById('p_banco_resultados');
+                if (resultados && searchInput && searchInput.value.trim()) {
+                    resultados.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Erro ao buscar produtos:', error);
+                renderProdutoResultados([], 'Erro ao buscar produtos', false);
+            }
+        }
+
+        function renderProdutoResultados(resultados, mensagemVazia = 'Nenhum produto encontrado', mostrar = true) {
+            const container = document.getElementById('p_banco_resultados');
+            if (!container) {
+                return;
+            }
+
+            const items = [];
+            items.push(`
+                <button type="button" class="produto-resultado-item produto-resultado-novo" onclick="openProdutoNovoModal()">
+                    <span>+ Produto novo</span>
+                </button>
+            `);
+
+            if (!resultados || resultados.length === 0) {
+                items.push(`<div class="produto-resultado-empty">${mensagemVazia}</div>`);
+            } else {
+                items.push(
+                    resultados.map((produto, idx) => `
+                        <button type="button" class="produto-resultado-item" onclick="selecionarProdutoResultado(${idx})">
+                            <div>
+                                <strong>${produto.nomeComercial || 'Produto'}</strong>
+                                ${produto.empresa ? `<span class="produto-resultado-empresa">${produto.empresa}</span>` : ''}
+                            </div>
+                            <span class="produto-resultado-badge ${produto.source === 'usuario' ? 'badge-user' : 'badge-catalogo'}">
+                                ${produto.source === 'usuario' ? 'Meu produto' : 'Catálogo'}
+                            </span>
+                        </button>
+                    `).join('')
+                );
+            }
+
+            container.innerHTML = items.join('');
+            if (mostrar) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+
+        window.openProdutoNovoModal = () => {
+            const modal = document.getElementById('modal-produto-novo');
+            if (!modal) return;
+            document.getElementById('novo_produto_nome').value = '';
+            document.getElementById('novo_produto_empresa').value = '';
+            document.getElementById('novo_produto_ph').value = '';
+            document.getElementById('novo_produto_url').value = '';
+            modal.classList.remove('hidden');
+            document.getElementById('novo_produto_nome').focus();
+        };
+
+        window.closeProdutoNovoModal = () => {
+            const modal = document.getElementById('modal-produto-novo');
+            if (!modal) return;
+            modal.classList.add('hidden');
+        };
+
+        window.salvarProdutoUsuario = async () => {
+            if (!currentUserData?.uid) {
+                showToast('❌ Faça login para salvar produtos', 'error');
+                return;
+            }
+
+            const nome = document.getElementById('novo_produto_nome').value.trim();
+            const empresa = document.getElementById('novo_produto_empresa').value.trim();
+            const phValor = parseFloat(document.getElementById('novo_produto_ph').value);
+            const urlFispq = document.getElementById('novo_produto_url').value.trim();
+
+            if (!nome || !empresa) {
+                showToast('❌ Informe nome comercial e empresa', 'error');
+                return;
+            }
+            if (Number.isFinite(phValor) && (phValor < 0 || phValor > 14)) {
+                showToast('❌ O pH do produto deve estar entre 0 e 14', 'error');
+                return;
+            }
+
+            try {
+                const firestore = window.firestore;
+                await firestore.collection('produtos_usuarios').add({
+                    nomeComercial: nome,
+                    empresa: empresa,
+                    phFispq: Number.isFinite(phValor) ? phValor : null,
+                    urlFispq: urlFispq || '',
+                    ownerUid: currentUserData.uid,
+                    nomeNormalizado: normalizeTexto(nome),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+
+                showToast('✅ Produto salvo no seu catálogo', 'success');
+
+                document.getElementById('p_nome').value = nome;
+                document.getElementById('p_marca').value = empresa;
+                document.getElementById('p_ph').value = Number.isFinite(phValor) ? phValor : '';
+                document.getElementById('p_url_fispq').value = urlFispq;
+                updateFispqLink();
+
+                const searchInput = document.getElementById('p_banco_busca');
+                if (searchInput) {
+                    searchInput.value = `${nome} (${empresa})`;
+                }
+
+                document.getElementById('novo_produto_nome').value = '';
+                document.getElementById('novo_produto_empresa').value = '';
+                document.getElementById('novo_produto_ph').value = '';
+                document.getElementById('novo_produto_url').value = '';
+                closeProdutoNovoModal();
+            } catch (error) {
+                console.error('Erro ao salvar produto:', error);
+                showToast('❌ Erro ao salvar produto', 'error');
+            }
+        };
+
+        window.updateFispqLink = () => {
+            const url = document.getElementById('p_url_fispq')?.value?.trim();
+            const container = document.getElementById('p_fispq_link');
+            if (!container) return;
+
+            if (url) {
+                container.innerHTML = `<a href="${url}" target="_blank" rel="noopener">FISPQ</a>`;
+            } else {
+                container.textContent = 'FISPQ: não informado';
+            }
         };
 
         function getApiBase() {
@@ -837,6 +1075,7 @@
                     formulacao: p.formulacao,
                     tipo: p.tipo,
                     ph: p.ph,
+                    urlFispq: p.urlFispq || p.url_fispq || '',
                     observacao: p.observacao || p.observacoes || ''
                 }));
 
@@ -950,6 +1189,7 @@
             const marca = document.getElementById('p_marca').value;
             const tipo = document.getElementById('p_tipo').value;
             const ph = parseFloat(document.getElementById('p_ph').value) || null;
+            const urlFispq = document.getElementById('p_url_fispq').value.trim();
 
             if (!nome || !Number.isFinite(dose) || dose <= 0) {
                 showToast('❌ Preencha nome e dose do produto', 'error');
@@ -967,40 +1207,27 @@
                 dose: dose,
                 formulacao: formulacao,
                 tipo: tipo,
-                ph: ph
+                ph: ph,
+                urlFispq: urlFispq || ''
             };
 
             products.push(p);
             renderProductList();
 
-            if (!usandoBanco && !bancoProdutos.find(bp => bp.nome === nome && bp.marca === marca)) {
-                try {
-                    // Salvar produto no Firebase
-                    if (currentUserData) {
-                        const prodRef = db.ref('produtos/' + currentUserData.uid);
-                        await prodRef.push({
-                            nome,
-                            marca,
-                            formulacao,
-                            tipo,
-                            ph,
-                            createdAt: new Date().toISOString()
-                        });
-                        await initBancosDados();
-                        showToast('💾 Produto salvo no banco de dados', 'success');
-                    }
-                } catch (e) {
-                    console.error('Erro ao salvar produto:', e);
-                }
-            }
-
             document.getElementById('p_nome').value = "";
             document.getElementById('p_marca').value = "";
             document.getElementById('p_dose').value = "";
             document.getElementById('p_ph').value = "";
+            document.getElementById('p_url_fispq').value = "";
             document.getElementById('p_formulacao').selectedIndex = 0;
             document.getElementById('p_tipo').selectedIndex = 0;
-            document.getElementById('p_banco').selectedIndex = 0;
+            updateFispqLink();
+
+            const searchInput = document.getElementById('p_banco_busca');
+            if (searchInput) {
+                searchInput.value = '';
+            }
+            renderProdutoResultados([], '', false);
 
             showToast('✅ Produto adicionado à lista', 'success');
         };
@@ -1016,7 +1243,12 @@
             }
 
             empty.classList.add('hidden');
-            lista.innerHTML = products.map((p, idx) => `
+            lista.innerHTML = products.map((p, idx) => {
+                const fispqLink = p.urlFispq
+                    ? `<a href="${p.urlFispq}" target="_blank" rel="noopener">FISPQ</a>`
+                    : `<span class="text-xs text-slate-400">FISPQ: não informado</span>`;
+
+                return `
                 <div class="product-item">
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
@@ -1027,12 +1259,14 @@
                         <p class="text-sm text-slate-600">
                             ${p.marca} · <span class="font-semibold">${p.dose}</span> L-Kg/ha
                         </p>
+                        <p class="text-sm text-slate-600 mt-1">${fispqLink}</p>
                     </div>
                     <button onclick="removeProduct(${p.id})" class="btn btn-icon">
                         <i class="fa-solid fa-trash text-lg"></i>
                     </button>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         window.removeProduct = (id) => {
@@ -2671,6 +2905,7 @@
             // Não carregar aqui pois o usuário ainda não está autenticado
             document.getElementById('produto-banco').style.display = 'block';
             document.getElementById('produto-form').style.display = 'block';
+            updateFispqLink();
 
             const atualizarBtn = document.getElementById('clima_atualizar');
             if (atualizarBtn) {
