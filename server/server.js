@@ -1,15 +1,17 @@
 require('dotenv').config();
 const express = require('express');
-const fs = require('fs').promises;
+const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const zlib = require('zlib');
 const path = require('path');
 const cors = require('cors');
+const XLSX = require('xlsx');
 const app = express();
 
 const DATA_DIR = path.join(__dirname, 'data');
 const SIMULACOES_PATH = path.join(DATA_DIR, 'simulacoes.json');
+const PRODUTOS_XLSX_PATH = path.resolve(__dirname, 'data', 'produtos.xlsx');
 const WEATHER_CACHE_TTL_MS = Number(process.env.WEATHER_CACHE_TTL_MS) || 3 * 60 * 1000;
 const weatherCache = new Map();
 const GEOCODE_CACHE_TTL_MS = Number(process.env.GEOCODE_CACHE_TTL_MS) || 24 * 60 * 60 * 1000;
@@ -53,7 +55,7 @@ app.use(express.json({ limit: '2mb' }));
 
 async function readJsonFile(filepath, fallback = []) {
   try {
-    const content = await fs.readFile(filepath, 'utf-8');
+    const content = await fs.promises.readFile(filepath, 'utf-8');
     return JSON.parse(content);
   } catch (error) {
     if (error.code === 'ENOENT') return fallback;
@@ -62,8 +64,8 @@ async function readJsonFile(filepath, fallback = []) {
 }
 
 async function writeJsonFile(filepath, data) {
-  await fs.mkdir(path.dirname(filepath), { recursive: true });
-  await fs.writeFile(filepath, JSON.stringify(data, null, 2));
+  await fs.promises.mkdir(path.dirname(filepath), { recursive: true });
+  await fs.promises.writeFile(filepath, JSON.stringify(data, null, 2));
 }
 
 function generateId() {
@@ -191,6 +193,73 @@ function computeDewPoint(temperature, humidity) {
   return Number.isFinite(dewPoint) ? Number(dewPoint.toFixed(2)) : null;
 }
 
+function normalizeTexto(valor) {
+  return (valor || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getFirstField(row, keys) {
+  if (!row) return '';
+  for (const key of keys) {
+    if (row[key]) {
+      return row[key];
+    }
+  }
+  return '';
+}
+
+function getProdutosNome(row) {
+  return getFirstField(row, [
+    'nomeComercial',
+    'nome_comercial',
+    'Nome Comercial',
+    'nome',
+    'Nome',
+    'produto',
+    'Produto',
+  ]);
+}
+
+function getProdutosEmpresa(row) {
+  return getFirstField(row, [
+    'empresa',
+    'Empresa',
+    'fabricante',
+    'Fabricante',
+    'marca',
+    'Marca',
+  ]);
+}
+
+function getProdutosFileInfo() {
+  const filePath = PRODUTOS_XLSX_PATH;
+  const exists = fs.existsSync(filePath);
+  const stats = exists ? fs.statSync(filePath) : null;
+  return { filePath, exists, stats };
+}
+
+function loadProdutosXlsx() {
+  const { filePath, exists, stats } = getProdutosFileInfo();
+  console.log(`[produtos] arquivo=${filePath} exists=${exists}`);
+  if (!exists) {
+    const error = new Error('Arquivo de produtos não encontrado.');
+    error.code = 'ENOENT';
+    error.filePath = filePath;
+    throw error;
+  }
+  console.log(`[produtos] mtime=${stats.mtime.toISOString()} size=${stats.size}`);
+  const workbook = XLSX.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+  return { rows, filePath, stats };
+}
+
 function getCachedWeather(cacheKey) {
   const cached = weatherCache.get(cacheKey);
   if (!cached) return null;
@@ -279,6 +348,66 @@ app.use(express.static(__dirname));
 // 🔧 API endpoints
 app.get('/api/status', (req, res) => {
   res.json({ status: 'OK', message: 'CaldaCerta Pro Online' });
+});
+
+app.get('/api/produtos/_debug', (req, res) => {
+  try {
+    const { rows, filePath, stats } = loadProdutosXlsx();
+    const sampleFirstNames = rows
+      .map((row) => getProdutosNome(row))
+      .filter((name) => name)
+      .slice(0, 5);
+    res.json({
+      filePath,
+      exists: true,
+      size: stats.size,
+      mtime: stats.mtime,
+      rowsLoaded: rows.length,
+      sampleFirstNames,
+    });
+  } catch (error) {
+    const filePath = error.filePath || PRODUTOS_XLSX_PATH;
+    res.status(500).json({
+      error: error.message || 'Erro ao carregar XLSX de produtos.',
+      filePath,
+    });
+  }
+});
+
+app.get('/api/produtos', (req, res) => {
+  const query = (req.query.query || '').toString().trim();
+  if (!query) {
+    res.json([]);
+    return;
+  }
+
+  try {
+    const { rows, filePath } = loadProdutosXlsx();
+    const normalizedQuery = normalizeTexto(query);
+    const filtered = rows
+      .map((row) => {
+        const nomeComercial = getProdutosNome(row);
+        const empresa = getProdutosEmpresa(row);
+        return {
+          nomeComercial: nomeComercial || '',
+          empresa: empresa || '',
+          source: 'catalogo',
+        };
+      })
+      .filter((row) => {
+        const haystack = normalizeTexto(`${row.nomeComercial} ${row.empresa}`);
+        return haystack.includes(normalizedQuery);
+      })
+      .slice(0, 20);
+    res.json(filtered);
+  } catch (error) {
+    const filePath = error.filePath || PRODUTOS_XLSX_PATH;
+    console.error('Erro ao buscar produtos:', error);
+    res.status(500).json({
+      error: error.message || 'Erro ao carregar XLSX de produtos.',
+      filePath,
+    });
+  }
 });
 
 app.get('/health', (req, res) => {

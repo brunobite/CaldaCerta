@@ -123,7 +123,7 @@
                 bancoResponsaveis = [];
                 bancoOperadores = [];
 
-                console.log('✅ Usando Firestore como banco de produtos');
+                console.log('✅ Usando API como banco de produtos');
 
                 preencherDatalist('clientes-list', bancoClientes);
                 preencherDatalist('propriedades-list', bancoPropriedades);
@@ -248,71 +248,40 @@
             const filtro = normalizeTexto(termo);
 
             if (!filtro || filtro.length < 2) {
-                renderProdutoResultados([], 'Digite pelo menos 2 caracteres', false);
-                return;
-            }
-
-            const firestore = window.firestore;
-            if (!firestore) {
-                renderProdutoResultados([], 'Firestore não disponível', false);
+                renderProdutoResultados([], '', false);
                 return;
             }
 
             try {
-                const prefixo = filtro;
-                const limite = 20;
-                const catalogQuery = firestore.collection('produtos_catalogo')
-                    .where('nomeNormalizado', '>=', prefixo)
-                    .where('nomeNormalizado', '<', prefixo + '\uf8ff')
-                    .orderBy('nomeNormalizado')
-                    .limit(limite);
+                renderProdutoResultados([], 'Carregando...', true);
+                const base = getApiBase();
+                const url = `${base}/api/produtos?query=${encodeURIComponent(filtro)}`;
+                const response = await fetch(url, {
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                });
+                const contentType = response.headers.get('content-type') || '';
+                const rawText = await response.text();
 
-                const consultas = [catalogQuery.get()];
-
-                if (currentUserData?.uid) {
-                    const userQuery = firestore.collection('produtos_usuarios')
-                        .where('ownerUid', '==', currentUserData.uid)
-                        .where('nomeNormalizado', '>=', prefixo)
-                        .where('nomeNormalizado', '<', prefixo + '\uf8ff')
-                        .orderBy('nomeNormalizado')
-                        .limit(limite);
-                    consultas.push(userQuery.get());
+                if (contentType.includes('text/html') || rawText.trim().toLowerCase().startsWith('<!doctype') || rawText.trim().toLowerCase().startsWith('<html')) {
+                    showToast('⚠️ API retornou HTML (rota errada)', 'error');
+                    throw new Error('API retornou HTML');
                 }
 
-                const [catalogSnapshot, userSnapshot] = await Promise.all(consultas);
+                if (!response.ok) {
+                    throw new Error(`Erro ao acessar API: ${response.status}`);
+                }
 
-                const resultadosCatalogo = catalogSnapshot.docs.map(doc => ({
-                    id: doc.id,
-                    source: 'catalogo',
-                    ...doc.data()
-                }));
+                let data = [];
+                try {
+                    data = rawText ? JSON.parse(rawText) : [];
+                } catch (parseError) {
+                    throw new Error('Resposta inválida da API de produtos');
+                }
 
-                const resultadosUsuario = userSnapshot
-                    ? userSnapshot.docs.map(doc => ({
-                        id: doc.id,
-                        source: 'usuario',
-                        ...doc.data()
-                    }))
-                    : [];
-
-                const vistos = new Set();
-                const combinados = [];
-
-                const adicionarLista = (lista) => {
-                    lista.forEach(item => {
-                        const chave = `${normalizeTexto(item.nomeComercial)}|${normalizeTexto(item.empresa)}`;
-                        if (!vistos.has(chave)) {
-                            vistos.add(chave);
-                            combinados.push(item);
-                        }
-                    });
-                };
-
-                adicionarLista(resultadosCatalogo);
-                adicionarLista(resultadosUsuario);
-
-                produtoResultados = combinados;
-                renderProdutoResultados(produtoResultados);
+                produtoResultados = Array.isArray(data) ? data : [];
+                renderProdutoResultados(produtoResultados, 'Nenhum produto encontrado', true);
 
                 const resultados = document.getElementById('p_banco_resultados');
                 if (resultados && searchInput && searchInput.value.trim()) {
@@ -320,7 +289,7 @@
                 }
             } catch (error) {
                 console.error('Erro ao buscar produtos:', error);
-                renderProdutoResultados([], 'Erro ao buscar produtos', false);
+                renderProdutoResultados([], 'Nenhum produto encontrado', true);
             }
         }
 
