@@ -20,7 +20,7 @@ const geocodeCache = new Map();
 const ALLOWED_ORIGINS = new Set([
   'https://caldacerta.onrender.com',
   'http://localhost:5500',
-  'http://localhost:10000',
+  'http://127.0.0.1:5500',
 ]);
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -44,12 +44,12 @@ const corsOptions = {
     }
     callback(new Error('Origem não permitida pelo CORS.'));
   },
-  methods: ['GET', 'OPTIONS', 'POST'],
-  allowedHeaders: ['Content-Type'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
 app.use(cors(corsOptions));
-app.options('/api/*', cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '2mb' }));
 
