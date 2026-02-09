@@ -56,28 +56,27 @@
         const tipoProduto = assertTipoProduto(produto?.tipoProduto);
         const phFispq = Number.isFinite(produto?.phFispq) ? produto.phFispq : null;
         const urlFispq = (produto?.urlFispq || '').toString().trim();
-        const formulacao = (produto?.formulacao || '').toString().trim();
 
         return {
             nomeComercial,
             empresa,
-            formulacao,
             tipoProduto,
             phFispq,
             urlFispq,
             nome_key: normalizeKey(nomeComercial),
             nomeNormalizado: normalizeTexto(nomeComercial),
             createdAt: Date.now(),
-            createdBy: user.uid
+            createdBy: user.uid,
+            createdByEmail: user.email || ''
         };
     }
 
     function getUserCatalogoRef(database, user) {
-        return database.ref(`catalogos/${user.uid}/produtos`);
+        return database.ref(`produtos_usuarios/${user.uid}`);
     }
 
     function getCatalogoGlobalRef(database) {
-        return database.ref('produtos');
+        return database.ref('produtos_catalogo');
     }
 
     async function saveUserProdutoRTDB(produto) {
@@ -85,8 +84,14 @@
         const database = getDatabase();
         const payload = buildProdutoPayload(produto, user);
         const ref = getUserCatalogoRef(database, user).push();
-        await ref.set(payload);
-        return { id: ref.key, ...payload };
+        const path = ref.toString();
+        try {
+            await ref.set(payload);
+            return { id: ref.key, ...payload };
+        } catch (err) {
+            console.error('[saveUserProduct] path=', path, 'uid=', user.uid, 'payload=', payload, 'err=', err);
+            throw err;
+        }
     }
 
     async function saveGlobalProdutoRTDB(produto) {
@@ -102,7 +107,7 @@
         const user = getCurrentUser();
         const database = getDatabase();
         const snapshot = await database
-            .ref(`catalogos/${user.uid}/produtos`)
+            .ref(`produtos_usuarios/${user.uid}`)
             .orderByChild('createdAt')
             .limitToLast(limit)
             .once('value');
@@ -117,7 +122,7 @@
     async function listCatalogoProdutos({ limit = DEFAULT_LIMIT } = {}) {
         const database = getDatabase();
         const snapshot = await database
-            .ref('produtos')
+            .ref('produtos_catalogo')
             .orderByChild('createdAt')
             .limitToLast(limit)
             .once('value');
