@@ -1123,6 +1123,130 @@
             white-space: nowrap;
         }
 
+        .produto-banco-container {
+            position: relative;
+        }
+
+        .produto-resultados {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            left: 0;
+            right: 0;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 20;
+            padding: 0.35rem;
+        }
+
+        .produto-resultados.hidden {
+            display: none;
+        }
+
+        .produto-resultado-item {
+            width: 100%;
+            border: none;
+            background: transparent;
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            border-radius: 0.6rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            color: #0f172a;
+            font-family: inherit;
+        }
+
+        .produto-resultado-item:hover {
+            background: #f1f5f9;
+        }
+
+        .produto-resultado-novo {
+            font-weight: 700;
+            color: #0f766e;
+        }
+
+        .produto-resultado-empty {
+            padding: 0.6rem 0.75rem;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        .produto-resultado-empresa {
+            display: block;
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-top: 0.15rem;
+        }
+
+        .produto-resultado-badge {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 0.2rem 0.45rem;
+            border-radius: 999px;
+            border: 1px solid transparent;
+        }
+
+        .produto-resultado-badge.badge-catalogo {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
+        .produto-resultado-badge.badge-user {
+            background: #ccfbf1;
+            color: #0f766e;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            z-index: 50;
+        }
+
+        .modal-overlay.hidden {
+            display: none;
+        }
+
+        .modal-card {
+            width: 100%;
+            max-width: 520px;
+            background: #ffffff;
+            border-radius: 1rem;
+            box-shadow: 0 20px 35px rgba(15, 23, 42, 0.2);
+            padding: 1.25rem;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .modal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
         /* ============================================
            LOGIN LOGO - 2x mais visível com corte
            ============================================ */
