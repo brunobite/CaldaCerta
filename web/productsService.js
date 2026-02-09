@@ -72,11 +72,28 @@
         };
     }
 
-    async function saveProdutoRTDB(produto) {
+    function getUserCatalogoRef(database, user) {
+        return database.ref(`catalogos/${user.uid}/produtos`);
+    }
+
+    function getCatalogoGlobalRef(database) {
+        return database.ref('produtos');
+    }
+
+    async function saveUserProdutoRTDB(produto) {
         const user = getCurrentUser();
         const database = getDatabase();
         const payload = buildProdutoPayload(produto, user);
-        const ref = database.ref('produtos').push();
+        const ref = getUserCatalogoRef(database, user).push();
+        await ref.set(payload);
+        return { id: ref.key, ...payload };
+    }
+
+    async function saveGlobalProdutoRTDB(produto) {
+        const user = getCurrentUser();
+        const database = getDatabase();
+        const payload = buildProdutoPayload(produto, user);
+        const ref = getCatalogoGlobalRef(database).push();
         await ref.set(payload);
         return { id: ref.key, ...payload };
     }
@@ -85,9 +102,8 @@
         const user = getCurrentUser();
         const database = getDatabase();
         const snapshot = await database
-            .ref('produtos')
-            .orderByChild('createdBy')
-            .equalTo(user.uid)
+            .ref(`catalogos/${user.uid}/produtos`)
+            .orderByChild('createdAt')
             .limitToLast(limit)
             .once('value');
         const data = snapshot.val() || {};
@@ -95,6 +111,21 @@
             id,
             ...produto,
             source: 'usuario'
+        }));
+    }
+
+    async function listCatalogoProdutos({ limit = DEFAULT_LIMIT } = {}) {
+        const database = getDatabase();
+        const snapshot = await database
+            .ref('produtos')
+            .orderByChild('createdAt')
+            .limitToLast(limit)
+            .once('value');
+        const data = snapshot.val() || {};
+        return Object.entries(data).map(([id, produto]) => ({
+            id,
+            ...produto,
+            source: 'catalogo'
         }));
     }
 
@@ -109,11 +140,25 @@
             .slice(0, limit);
     }
 
+    async function searchCatalogoProdutosByTerm(termo, { limit = DEFAULT_LIMIT } = {}) {
+        const key = normalizeKey(termo);
+        if (!key) {
+            return [];
+        }
+        const produtos = await listCatalogoProdutos({ limit });
+        return produtos
+            .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key))
+            .slice(0, limit);
+    }
+
     window.productsService = {
         normalizeTexto,
         normalizeKey,
-        saveProdutoRTDB,
+        saveUserProdutoRTDB,
+        saveGlobalProdutoRTDB,
         listUserProdutos,
-        searchUserProdutosByTerm
+        listCatalogoProdutos,
+        searchUserProdutosByTerm,
+        searchCatalogoProdutosByTerm
     };
 })();
