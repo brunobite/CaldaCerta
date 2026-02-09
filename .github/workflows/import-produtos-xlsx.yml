@@ -4,15 +4,14 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "server/data/produtos.xlsx"
-      - "server/scripts/import_xlsx_to_firestore.js"
-      - "server/package.json"
-      - "server/package-lock.json"
+      - "servidor/dados/produtos.xlsx"
+      - "servidor/scripts/import_xlsx_to_firestore.js"
+      - "servidor/package.json"
 
   workflow_dispatch: {}
 
 jobs:
-  import-xlsx:
+  importar-xlsx:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,29 +22,27 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: server/package-lock.json
 
-      - name: Instalar dependências (server)
-        working-directory: server
-        run: npm ci
+      - name: Instalar dependências (servidor)
+        working-directory: servidor
+        run: npm install --no-package-lock
 
       - name: Criar serviceAccount.json
-        working-directory: server
+        working-directory: servidor
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}' > serviceAccount.json
 
       - name: Importar XLSX para Firestore
-        working-directory: server
+        working-directory: servidor
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         run: |
           node scripts/import_xlsx_to_firestore.js \
-            --input data/produtos.xlsx \
+            --input dados/produtos.xlsx \
             --collection produtos_catalogo \
-            --serviceAccount serviceAccount.json
+            --service-account serviceAccount.json
 
       - name: Cleanup
         if: always()
-        working-directory: server
+        working-directory: servidor
         run: rm -f serviceAccount.json
