@@ -80,6 +80,77 @@
         let bancoResponsaveis = [];
         let bancoOperadores = [];
 
+        const PRODUCT_TYPE_OPTIONS = [
+            { value: 'calcita', label: 'Corretivo / Calcita' },
+            { value: 'fertilizante', label: 'Fertilizante' },
+            { value: 'adjuvante', label: 'Adjuvante' },
+            { value: 'herbicida', label: 'Herbicida' },
+            { value: 'fungicida', label: 'Fungicida' },
+            { value: 'inseticida', label: 'Inseticida' },
+            { value: 'acaricida', label: 'Acaricida' },
+            { value: 'biologico', label: 'Biológico' },
+            { value: 'oleo', label: 'Óleo Mineral/Vegetal' },
+            { value: 'outros', label: 'Outros' }
+        ];
+
+        const PRODUCT_TYPE_LABELS = PRODUCT_TYPE_OPTIONS.reduce((acc, item) => {
+            acc[item.value] = item.label;
+            return acc;
+        }, {});
+
+        const LEGACY_TYPE_MAP = {
+            ADJUVANTE: 'adjuvante',
+            ESPALHANTE: 'adjuvante',
+            ANTIESPUMA: 'adjuvante',
+            FERTILIZANTE: 'fertilizante',
+            OLEO: 'oleo',
+            PRODUTO: 'outros'
+        };
+
+        function normalizeProdutoTipo(value) {
+            if (!value) return '';
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (!trimmed) return '';
+                if (LEGACY_TYPE_MAP[trimmed]) return LEGACY_TYPE_MAP[trimmed];
+                const normalized = trimmed
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase();
+                if (PRODUCT_TYPE_LABELS[normalized]) return normalized;
+            }
+            return '';
+        }
+
+        function getProdutoTipoLabel(value) {
+            const normalized = normalizeProdutoTipo(value);
+            return normalized ? PRODUCT_TYPE_LABELS[normalized] : 'Não informado';
+        }
+
+        function resolveProdutoTipo(produto) {
+            return normalizeProdutoTipo(produto?.tipoProduto || produto?.tipo);
+        }
+
+        function updateProdutoNovoSaveState() {
+            const select = document.getElementById('novo_produto_tipo');
+            const btn = document.getElementById('btn-salvar-produto');
+            const error = document.getElementById('novo_produto_tipo_error');
+            if (!select || !btn) return;
+            const hasValue = !!select.value;
+            btn.disabled = !hasValue;
+            if (error) {
+                const touched = select.dataset.touched === 'true';
+                error.classList.toggle('hidden', hasValue || !touched);
+            }
+        }
+
+        function maybeWarnProdutoTipoMissing(produtos) {
+            const missing = produtos.some((produto) => !resolveProdutoTipo(produto));
+            if (missing) {
+                showToast('⚠️ Alguns produtos estão sem tipo. Edite ou selecione o tipo para evitar inconsistências.', 'warning');
+            }
+        }
+
         // ✅ MODO API: leitura / badge / toggle
         function getModoAtual() {
             const forced = (localStorage.getItem("MODO_API") || "").toLowerCase();
@@ -180,6 +251,12 @@
             document.getElementById('p_ph').value = formatPhValue(produto.phFispq);
             document.getElementById('p_url_fispq').value = produto.urlFispq || '';
             updateFispqLink();
+
+            const tipoProduto = resolveProdutoTipo(produto);
+            const tipoSelect = document.getElementById('p_tipo');
+            if (tipoSelect) {
+                tipoSelect.value = tipoProduto || '';
+            }
 
             const searchInput = document.getElementById('p_banco_busca');
             if (searchInput) {
@@ -401,17 +478,21 @@
                 items.push(`<div class="produto-resultado-empty">${mensagemVazia}</div>`);
             } else {
                 items.push(
-                    resultados.map((produto, idx) => `
+                    resultados.map((produto, idx) => {
+                        const tipoLabel = getProdutoTipoLabel(produto.tipoProduto || produto.tipo);
+                        return `
                         <button type="button" class="produto-resultado-item" onclick="selecionarProdutoResultado(${idx})">
                             <div>
                                 <strong>${produto.nomeComercial || 'Produto'}</strong>
                                 ${produto.empresa ? `<span class="produto-resultado-empresa">${produto.empresa}</span>` : ''}
+                                <div class="text-xs text-slate-500 mt-1">Tipo: ${tipoLabel}</div>
                             </div>
                             <span class="produto-resultado-badge ${produto.source === 'usuario' ? 'badge-user' : 'badge-catalogo'}">
                                 ${produto.source === 'usuario' ? 'Meu produto' : 'Catálogo'}
                             </span>
                         </button>
-                    `).join('')
+                    `;
+                    }).join('')
                 );
             }
 
@@ -428,10 +509,24 @@
             if (!modal) return;
             document.getElementById('novo_produto_nome').value = '';
             document.getElementById('novo_produto_empresa').value = '';
+            document.getElementById('novo_produto_tipo').value = '';
             document.getElementById('novo_produto_ph').value = '';
             document.getElementById('novo_produto_url').value = '';
             modal.classList.remove('hidden');
+            updateProdutoNovoSaveState();
             document.getElementById('novo_produto_nome').focus();
+
+            const tipoSelect = document.getElementById('novo_produto_tipo');
+            if (tipoSelect && !tipoSelect.dataset.listener) {
+                tipoSelect.addEventListener('change', updateProdutoNovoSaveState);
+                tipoSelect.addEventListener('change', () => {
+                    tipoSelect.dataset.touched = 'true';
+                });
+                tipoSelect.dataset.listener = 'true';
+            }
+            if (tipoSelect) {
+                tipoSelect.dataset.touched = 'false';
+            }
         };
 
         window.closeProdutoNovoModal = () => {
@@ -448,11 +543,21 @@
 
             const nome = document.getElementById('novo_produto_nome').value.trim();
             const empresa = document.getElementById('novo_produto_empresa').value.trim();
+            const tipoProduto = document.getElementById('novo_produto_tipo').value.trim();
             const phValor = parsePhValue(document.getElementById('novo_produto_ph').value);
             const urlFispq = document.getElementById('novo_produto_url').value.trim();
 
             if (!nome || !empresa) {
                 showToast('❌ Informe nome comercial e empresa', 'error');
+                return;
+            }
+            if (!tipoProduto) {
+                const tipoSelect = document.getElementById('novo_produto_tipo');
+                if (tipoSelect) {
+                    tipoSelect.dataset.touched = 'true';
+                }
+                updateProdutoNovoSaveState();
+                showToast('❌ Selecione o tipo de produto', 'error');
                 return;
             }
             if (Number.isFinite(phValor) && (phValor < 0 || phValor > 14)) {
@@ -465,6 +570,7 @@
                 await firestore.collection('produtos_usuarios').add({
                     nomeComercial: nome,
                     empresa: empresa,
+                    tipoProduto: tipoProduto,
                     phFispq: Number.isFinite(phValor) ? phValor : null,
                     urlFispq: urlFispq || '',
                     nome_key: normalizeKey(nome),
@@ -478,6 +584,10 @@
 
                 document.getElementById('p_nome').value = nome;
                 document.getElementById('p_marca').value = empresa;
+                const tipoSelect = document.getElementById('p_tipo');
+                if (tipoSelect) {
+                    tipoSelect.value = tipoProduto;
+                }
                 document.getElementById('p_ph').value = formatPhValue(phValor);
                 document.getElementById('p_url_fispq').value = urlFispq;
                 updateFispqLink();
@@ -489,8 +599,10 @@
 
                 document.getElementById('novo_produto_nome').value = '';
                 document.getElementById('novo_produto_empresa').value = '';
+                document.getElementById('novo_produto_tipo').value = '';
                 document.getElementById('novo_produto_ph').value = '';
                 document.getElementById('novo_produto_url').value = '';
+                updateProdutoNovoSaveState();
                 closeProdutoNovoModal();
             } catch (error) {
                 console.error('Erro ao salvar produto:', error);
@@ -775,15 +887,23 @@
 
         function sortProductsByHierarchy(products, criterio = 'tipo') {
             const hierarchy = {
-                'ADJUVANTE': 1, 'ESPALHANTE': 1, 'ANTIESPUMA': 1,
-                'PRODUTO': 2, 'SC': 2, 'CE': 2, 'WG': 2, 'EW': 2, 'OD': 2,
-                'FERTILIZANTE': 3,
-                'OLEO': 4
+                'adjuvante': 1,
+                'calcita': 2,
+                'fertilizante': 3,
+                'oleo': 4,
+                'outros': 2,
+                'herbicida': 2,
+                'fungicida': 2,
+                'inseticida': 2,
+                'acaricida': 2,
+                'biologico': 2
             };
 
             return [...products].sort((a, b) => {
-                const prioA = hierarchy[a.tipo] || hierarchy[a.formulacao] || 2;
-                const prioB = hierarchy[b.tipo] || hierarchy[b.formulacao] || 2;
+                const tipoA = resolveProdutoTipo(a);
+                const tipoB = resolveProdutoTipo(b);
+                const prioA = hierarchy[tipoA] || hierarchy[a.tipo] || hierarchy[a.formulacao] || 2;
+                const prioB = hierarchy[tipoB] || hierarchy[b.tipo] || hierarchy[b.formulacao] || 2;
 
                 if (prioA !== prioB) return prioA - prioB;
 
@@ -1134,7 +1254,8 @@
                     marca: p.produto_marca || p.marca,
                     dose: p.dose,
                     formulacao: p.formulacao,
-                    tipo: p.tipo,
+                    tipoProduto: resolveProdutoTipo(p),
+                    tipo: resolveProdutoTipo(p) || p.tipo,
                     ph: p.ph,
                     urlFispq: p.urlFispq || p.url_fispq || '',
                     observacao: p.observacao || p.observacoes || ''
@@ -1149,6 +1270,7 @@
                 };
 
                 renderProductList();
+                maybeWarnProdutoTipoMissing(products);
                 calcRendimento();
                 toggleHierarchyOptions();
                 navTo('2-6');
@@ -1260,6 +1382,10 @@
                 showToast('❌ O pH do produto deve estar entre 0 e 14', 'error');
                 return;
             }
+            if (!tipo) {
+                showToast('❌ Selecione o tipo de produto', 'error');
+                return;
+            }
 
             const p = {
                 id: Date.now(),
@@ -1267,6 +1393,7 @@
                 marca: marca || 'Não informada',
                 dose: dose,
                 formulacao: formulacao,
+                tipoProduto: tipo,
                 tipo: tipo,
                 ph: ph,
                 urlFispq: urlFispq || ''
@@ -1320,6 +1447,7 @@
                         <p class="text-sm text-slate-600">
                             ${p.marca} · <span class="font-semibold">${p.dose}</span> L-Kg/ha
                         </p>
+                        <p class="text-sm text-slate-500 mt-1">Tipo: ${getProdutoTipoLabel(p.tipoProduto || p.tipo)}</p>
                         <p class="text-sm text-slate-600 mt-1">${fispqLink}</p>
                     </div>
                     <button onclick="removeProduct(${p.id})" class="btn btn-icon">
