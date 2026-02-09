@@ -1,19 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /produtos_catalogo/{doc} {
-      allow read: if true;
-      allow write: if false;
+
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    match /produtos_usuarios/{doc} {
-      allow create: if request.auth != null
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow read: if request.auth != null
-        && resource.data.ownerUid == request.auth.uid;
-      allow update, delete: if request.auth != null
-        && resource.data.ownerUid == request.auth.uid
-        && request.resource.data.ownerUid == resource.data.ownerUid;
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Biblioteca de produtos por usuário
+    match /users/{userId}/produtos/{produtoId} {
+      allow read, create, update, delete: if isOwner(userId);
+    }
+
+    // (Opcional) doc do usuário (perfil/config)
+    match /users/{userId} {
+      allow read, create, update: if isOwner(userId);
     }
   }
 }

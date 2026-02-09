@@ -161,6 +161,10 @@
             return base.includes("localhost") ? "local" : "remoto";
         }
 
+        function shouldUseRemoteApi() {
+            return getModoAtual() === "remoto";
+        }
+
         function atualizarBadgeModo() {
             const btn = document.getElementById("user-display");
             if (!btn) return;
@@ -349,6 +353,9 @@
         }
 
         function logPhLookupServer(payload) {
+            if (!shouldUseRemoteApi()) {
+                return;
+            }
             const base = getApiBase();
             if (!base) {
                 return;
@@ -411,6 +418,35 @@
             }
         }
 
+        async function fetchUserProdutosByTerm(termo, database) {
+            if (!currentUserData?.uid || !database) {
+                return [];
+            }
+            const key = normalizeKey(termo);
+            if (!key) {
+                return [];
+            }
+            try {
+                const snapshot = await database
+                    .ref('produtos')
+                    .orderByChild('createdBy')
+                    .equalTo(currentUserData.uid)
+                    .once('value');
+                const data = snapshot.val() || {};
+                return Object.entries(data)
+                    .map(([id, produto]) => ({
+                        id,
+                        ...produto,
+                        source: 'usuario'
+                    }))
+                    .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key))
+                    .slice(0, 20);
+            } catch (error) {
+                console.warn('⚠️ Falha ao carregar produtos do usuário:', error);
+                return [];
+            }
+        }
+
         async function buscarProdutosTypeahead(termo) {
             const searchInput = document.getElementById('p_banco_busca');
             const filtro = normalizeTexto(termo);
@@ -422,33 +458,39 @@
 
             try {
                 renderProdutoResultados([], 'Carregando...', true);
-                const base = getApiBase();
-                const url = `${base}/api/produtos?query=${encodeURIComponent(filtro)}`;
-                const response = await fetch(url, {
-                    headers: {
-                        Accept: 'application/json'
+                const database = window.database;
+                const userProdutos = await fetchUserProdutosByTerm(filtro, database);
+                let apiProdutos = [];
+
+                if (shouldUseRemoteApi()) {
+                    const base = getApiBase();
+                    const url = `${base}/api/produtos?query=${encodeURIComponent(filtro)}`;
+                    const response = await fetch(url, {
+                        headers: {
+                            Accept: 'application/json'
+                        }
+                    });
+                    const contentType = response.headers.get('content-type') || '';
+                    const rawText = await response.text();
+
+                    if (contentType.includes('text/html') || rawText.trim().toLowerCase().startsWith('<!doctype') || rawText.trim().toLowerCase().startsWith('<html')) {
+                        showToast('⚠️ API retornou HTML (rota errada)', 'error');
+                        throw new Error('API retornou HTML');
                     }
-                });
-                const contentType = response.headers.get('content-type') || '';
-                const rawText = await response.text();
 
-                if (contentType.includes('text/html') || rawText.trim().toLowerCase().startsWith('<!doctype') || rawText.trim().toLowerCase().startsWith('<html')) {
-                    showToast('⚠️ API retornou HTML (rota errada)', 'error');
-                    throw new Error('API retornou HTML');
+                    if (!response.ok) {
+                        throw new Error(`Erro ao acessar API: ${response.status}`);
+                    }
+
+                    try {
+                        apiProdutos = rawText ? JSON.parse(rawText) : [];
+                    } catch (parseError) {
+                        throw new Error('Resposta inválida da API de produtos');
+                    }
                 }
 
-                if (!response.ok) {
-                    throw new Error(`Erro ao acessar API: ${response.status}`);
-                }
-
-                let data = [];
-                try {
-                    data = rawText ? JSON.parse(rawText) : [];
-                } catch (parseError) {
-                    throw new Error('Resposta inválida da API de produtos');
-                }
-
-                produtoResultados = Array.isArray(data) ? data : [];
+                const merged = [...userProdutos, ...(Array.isArray(apiProdutos) ? apiProdutos : [])];
+                produtoResultados = merged;
                 renderProdutoResultados(produtoResultados, 'Nenhum produto encontrado', true);
 
                 const resultados = document.getElementById('p_banco_resultados');
@@ -566,18 +608,17 @@
             }
 
             try {
-                const firestore = window.firestore;
-                await firestore.collection('produtos_usuarios').add({
+                const database = window.database;
+                await database.ref('produtos').push({
                     nomeComercial: nome,
                     empresa: empresa,
                     tipoProduto: tipoProduto,
                     phFispq: Number.isFinite(phValor) ? phValor : null,
                     urlFispq: urlFispq || '',
                     nome_key: normalizeKey(nome),
-                    ownerUid: currentUserData.uid,
                     nomeNormalizado: normalizeTexto(nome),
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    createdBy: currentUserData.uid
                 });
 
                 showToast('✅ Produto salvo no seu catálogo', 'success');
@@ -623,6 +664,9 @@
         };
 
         function getApiBase() {
+            if (!shouldUseRemoteApi()) {
+                return '';
+            }
             return window.API_BASE || '';
         }
 
@@ -773,6 +817,9 @@
         }
 
         async function loadHistoryFromServer() {
+            if (!shouldUseRemoteApi()) {
+                return [];
+            }
             const base = getApiBase();
             const uidParam = !isUserAdmin && currentUserData ? `?uid=${encodeURIComponent(currentUserData.uid)}` : '';
             const url = `${base}/api/simulacoes${uidParam}`;
@@ -982,6 +1029,9 @@
         }
 
         async function saveSimulationToServer(payload) {
+            if (!shouldUseRemoteApi()) {
+                return { skipped: true };
+            }
             const base = getApiBase();
             const now = new Date().toISOString();
             const body = {
@@ -1185,6 +1235,9 @@
         };
 
         async function fetchSimulationFromServer(id, uidOverride = '') {
+            if (!shouldUseRemoteApi()) {
+                return null;
+            }
             const base = getApiBase();
             const uidParam = uidOverride ? `?uid=${encodeURIComponent(uidOverride)}` : '';
             const url = `${base}/api/simulacoes/${id}${uidParam}`;
