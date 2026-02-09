@@ -418,8 +418,8 @@
             }
         }
 
-        async function fetchUserProdutosByTerm(termo, firestore) {
-            if (!currentUserData?.uid || !firestore) {
+        async function fetchUserProdutosByTerm(termo, database) {
+            if (!currentUserData?.uid || !database) {
                 return [];
             }
             const key = normalizeKey(termo);
@@ -427,20 +427,20 @@
                 return [];
             }
             try {
-                const snapshot = await firestore
-                    .collection('users')
-                    .doc(currentUserData.uid)
-                    .collection('produtos')
-                    .orderBy('nome_key')
-                    .startAt(key)
-                    .endAt(`${key}\uf8ff`)
-                    .limit(20)
-                    .get();
-                return snapshot.docs.map((doc) => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    source: 'usuario'
-                }));
+                const snapshot = await database
+                    .ref('produtos')
+                    .orderByChild('createdBy')
+                    .equalTo(currentUserData.uid)
+                    .once('value');
+                const data = snapshot.val() || {};
+                return Object.entries(data)
+                    .map(([id, produto]) => ({
+                        id,
+                        ...produto,
+                        source: 'usuario'
+                    }))
+                    .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key))
+                    .slice(0, 20);
             } catch (error) {
                 console.warn('⚠️ Falha ao carregar produtos do usuário:', error);
                 return [];
@@ -458,8 +458,8 @@
 
             try {
                 renderProdutoResultados([], 'Carregando...', true);
-                const firestore = window.firestore;
-                const userProdutos = await fetchUserProdutosByTerm(filtro, firestore);
+                const database = window.database;
+                const userProdutos = await fetchUserProdutosByTerm(filtro, database);
                 let apiProdutos = [];
 
                 if (shouldUseRemoteApi()) {
@@ -608,12 +608,8 @@
             }
 
             try {
-                const firestore = window.firestore;
-                await firestore
-                    .collection('users')
-                    .doc(currentUserData.uid)
-                    .collection('produtos')
-                    .add({
+                const database = window.database;
+                await database.ref('produtos').push({
                     nomeComercial: nome,
                     empresa: empresa,
                     tipoProduto: tipoProduto,
@@ -621,8 +617,8 @@
                     urlFispq: urlFispq || '',
                     nome_key: normalizeKey(nome),
                     nomeNormalizado: normalizeTexto(nome),
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    createdBy: currentUserData.uid
                 });
 
                 showToast('✅ Produto salvo no seu catálogo', 'success');
