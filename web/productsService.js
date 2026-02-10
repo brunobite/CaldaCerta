@@ -220,27 +220,39 @@
         });
     }
 
-    async function searchByTokenIndex(termo, { limit = DEFAULT_LIMIT } = {}) {
+    async function searchByMultipleTokens(termo, { limit = DEFAULT_LIMIT } = {}) {
         const key = normalizeKey(termo);
         if (!key || key.length < MIN_TOKEN_LENGTH) {
             return [];
         }
 
-        const tokenPrefix = key.split(' ')[0] || '';
-        if (tokenPrefix.length < MIN_TOKEN_LENGTH) {
+        const searchTokens = buildSearchTokens(key, { minLength: MIN_TOKEN_LENGTH });
+        if (searchTokens.length === 0) {
             return [];
         }
 
         const database = getDatabase();
         const user = getCurrentUser();
 
-        const [catalogoIndex, usuarioIndex] = await Promise.all([
-            database.ref(`produtos_catalogo_busca/${tokenPrefix}`).once('value'),
-            database.ref(`produtos_usuarios_busca/${user.uid}/${tokenPrefix}`).once('value')
-        ]);
+        const catalogoIdsSet = new Set();
+        const usuarioIdsSet = new Set();
 
-        const catalogoIds = Object.keys(catalogoIndex.val() || {});
-        const usuarioIds = Object.keys(usuarioIndex.val() || {});
+        for (const token of searchTokens) {
+            if (token.length < MIN_TOKEN_LENGTH) {
+                continue;
+            }
+
+            const [catalogoIndex, usuarioIndex] = await Promise.all([
+                database.ref(`produtos_catalogo_busca/${token}`).once('value'),
+                database.ref(`produtos_usuarios_busca/${user.uid}/${token}`).once('value')
+            ]);
+
+            Object.keys(catalogoIndex.val() || {}).forEach((id) => catalogoIdsSet.add(id));
+            Object.keys(usuarioIndex.val() || {}).forEach((id) => usuarioIdsSet.add(id));
+        }
+
+        const catalogoIds = [...catalogoIdsSet];
+        const usuarioIds = [...usuarioIdsSet];
 
         const [catalogoProdutos, usuarioProdutos] = await Promise.all([
             fetchProdutosByIds(catalogoIds, { source: 'catalogo' }),
@@ -249,7 +261,10 @@
 
         const combined = [...usuarioProdutos, ...catalogoProdutos]
             .filter(Boolean)
-            .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key));
+            .filter((produto) => {
+                const produtoKey = normalizeKey(produto.nomeComercial || produto.nome || '');
+                return searchTokens.every((token) => produtoKey.includes(token));
+            });
 
         const dedup = [];
         const seen = new Set();
@@ -262,6 +277,10 @@
         });
 
         return dedup.slice(0, limit);
+    }
+
+    async function searchByTokenIndex(termo, { limit = DEFAULT_LIMIT } = {}) {
+        return searchByMultipleTokens(termo, { limit });
     }
 
     async function searchUserProdutosByTerm(termo, { limit = DEFAULT_LIMIT } = {}) {
@@ -305,6 +324,7 @@
         normalizeKey,
         parsePhFispq,
         buildSearchTokens,
+        searchByMultipleTokens,
         saveUserProdutoRTDB,
         saveGlobalProdutoRTDB,
         listUserProdutos,
