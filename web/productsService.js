@@ -1,5 +1,7 @@
 (() => {
     const DEFAULT_LIMIT = 50;
+    const MIN_TOKEN_LENGTH = 2;
+    const DEFAULT_CONCURRENCY = 10;
 
     function normalizeTexto(valor) {
         return (valor || '')
@@ -93,6 +95,26 @@
         };
     }
 
+    function buildSearchTokens(texto, { minLength = MIN_TOKEN_LENGTH } = {}) {
+        const normalized = normalizeKey(texto);
+        if (!normalized) {
+            return [];
+        }
+
+        const tokens = new Set();
+        const words = normalized.split(' ').filter(Boolean);
+        words.forEach((word) => {
+            if (word.length < minLength) {
+                return;
+            }
+            for (let size = minLength; size <= word.length; size += 1) {
+                tokens.add(word.slice(0, size));
+            }
+        });
+
+        return [...tokens];
+    }
+
     function getUserCatalogoRef(database, user) {
         return database.ref(`produtos_usuarios/${user.uid}`);
     }
@@ -156,26 +178,98 @@
         }));
     }
 
-    async function searchUserProdutosByTerm(termo, { limit = DEFAULT_LIMIT } = {}) {
-        const key = normalizeKey(termo);
-        if (!key) {
+    async function readMapAtPath(path) {
+        const snapshot = await getDatabase().ref(path).once('value');
+        return snapshot.val() || {};
+    }
+
+    async function mapWithConcurrency(items, mapper, { concurrency = DEFAULT_CONCURRENCY } = {}) {
+        if (!Array.isArray(items) || items.length === 0) {
             return [];
         }
-        const produtos = await listUserProdutos({ limit });
-        return produtos
-            .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key))
-            .slice(0, limit);
+
+        const results = [];
+        for (let i = 0; i < items.length; i += concurrency) {
+            const chunk = items.slice(i, i + concurrency);
+            const chunkResults = await Promise.all(chunk.map(mapper));
+            results.push(...chunkResults);
+        }
+        return results;
+    }
+
+    async function fetchProdutosByIds(ids, { source, uid }) {
+        if (!ids || ids.length === 0) {
+            return [];
+        }
+
+        return mapWithConcurrency(ids, async (id) => {
+            const basePath = source === 'catalogo'
+                ? `produtos_catalogo/${id}`
+                : `produtos_usuarios/${uid}/${id}`;
+
+            const value = await readMapAtPath(basePath);
+            if (!value || typeof value !== 'object') {
+                return null;
+            }
+
+            return {
+                id,
+                ...value,
+                source
+            };
+        });
+    }
+
+    async function searchByTokenIndex(termo, { limit = DEFAULT_LIMIT } = {}) {
+        const key = normalizeKey(termo);
+        if (!key || key.length < MIN_TOKEN_LENGTH) {
+            return [];
+        }
+
+        const tokenPrefix = key.split(' ')[0] || '';
+        if (tokenPrefix.length < MIN_TOKEN_LENGTH) {
+            return [];
+        }
+
+        const database = getDatabase();
+        const user = getCurrentUser();
+
+        const [catalogoIndex, usuarioIndex] = await Promise.all([
+            database.ref(`produtos_catalogo_busca/${tokenPrefix}`).once('value'),
+            database.ref(`produtos_usuarios_busca/${user.uid}/${tokenPrefix}`).once('value')
+        ]);
+
+        const catalogoIds = Object.keys(catalogoIndex.val() || {});
+        const usuarioIds = Object.keys(usuarioIndex.val() || {});
+
+        const [catalogoProdutos, usuarioProdutos] = await Promise.all([
+            fetchProdutosByIds(catalogoIds, { source: 'catalogo' }),
+            fetchProdutosByIds(usuarioIds, { source: 'usuario', uid: user.uid })
+        ]);
+
+        const combined = [...usuarioProdutos, ...catalogoProdutos]
+            .filter(Boolean)
+            .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key));
+
+        const dedup = [];
+        const seen = new Set();
+        combined.forEach((produto) => {
+            const dedupKey = `${produto.source}:${produto.id}`;
+            if (!seen.has(dedupKey)) {
+                seen.add(dedupKey);
+                dedup.push(produto);
+            }
+        });
+
+        return dedup.slice(0, limit);
+    }
+
+    async function searchUserProdutosByTerm(termo, { limit = DEFAULT_LIMIT } = {}) {
+        return searchByTokenIndex(termo, { limit });
     }
 
     async function searchCatalogoProdutosByTerm(termo, { limit = DEFAULT_LIMIT } = {}) {
-        const key = normalizeKey(termo);
-        if (!key) {
-            return [];
-        }
-        const produtos = await listCatalogoProdutos({ limit });
-        return produtos
-            .filter((produto) => normalizeKey(produto.nomeComercial || '').includes(key))
-            .slice(0, limit);
+        return searchByTokenIndex(termo, { limit });
     }
 
     function subscribeUserProdutos(callback, { limit = DEFAULT_LIMIT } = {}) {
@@ -210,10 +304,12 @@
         normalizeTexto,
         normalizeKey,
         parsePhFispq,
+        buildSearchTokens,
         saveUserProdutoRTDB,
         saveGlobalProdutoRTDB,
         listUserProdutos,
         listCatalogoProdutos,
+        searchByTokenIndex,
         searchUserProdutosByTerm,
         searchCatalogoProdutosByTerm,
         subscribeUserProdutos

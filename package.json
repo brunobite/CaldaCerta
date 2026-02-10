@@ -5,6 +5,8 @@
   "description": "CaldaCerta app",
   "scripts": {
     "start": "npm --prefix server start",
-    "dev": "npm --prefix server run dev"
+    "dev": "npm --prefix server run dev",
+    "rtdb:backfill-nome-key": "npm --prefix servidor exec -- node ../scripts/rtdb-fix/backfill_nome_key_rtdb.js",
+    "rtdb:build-index": "npm --prefix servidor exec -- node ../scripts/rtdb-fix/build_tokens_index_rtdb.js"
   }
 }
