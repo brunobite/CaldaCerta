@@ -1,3 +1,19 @@
+/**
+ * Importa um XLSX para Firebase Realtime Database (RTDB) em /produtos_catalogo
+ *
+ * Requisitos:
+ * - Node + npm
+ * - npm i firebase-admin xlsx
+ *
+ * Variáveis de ambiente (PowerShell):
+ *   $env:FIREBASE_PROJECT_ID="caldacerta-pro"
+ *   $env:FIREBASE_DATABASE_URL="https://caldacerta-pro-default-rtdb.firebaseio.com"
+ *   $env:FIREBASE_SERVICE_ACCOUNT_JSON=(Get-Content .\serviceAccountKey.json -Raw)
+ *
+ * Uso:
+ *   node .\scripts\rtdb-import\import_xlsx_to_rtdb.js .\server\data\produtos.xlsx
+ */
+
 const admin = require('firebase-admin');
 const XLSX = require('xlsx');
 const path = require('path');
@@ -46,7 +62,7 @@ let serviceAccount;
 try {
   serviceAccount = JSON.parse(serviceAccountJson);
 } catch (error) {
-  console.error('❌ FIREBASE_SERVICE_ACCOUNT_JSON inválido.');
+  console.error('❌ FIREBASE_SERVICE_ACCOUNT_JSON inválido (JSON parse falhou).');
   process.exit(1);
 }
 
@@ -54,7 +70,7 @@ try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     projectId,
-    databaseURL: databaseUrl
+    databaseURL: databaseUrl,
   });
 } catch (error) {
   console.error('❌ Erro ao inicializar Firebase Admin:', error.message);
@@ -89,7 +105,15 @@ function carregarPlanilha(caminho) {
   const workbook = XLSX.readFile(caminho);
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
-  return XLSX.utils.sheet_to_json(worksheet);
+
+  // defval:'' garante chaves presentes mesmo quando célula vazia (bom p/ debug)
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+  // Log útil para confirmar colunas
+  const cols = Object.keys(rows[0] || {});
+  console.log('🧾 Colunas detectadas:', cols);
+
+  return rows;
 }
 
 async function importarProdutos() {
@@ -103,38 +127,34 @@ async function importarProdutos() {
   let ignorados = 0;
 
   for (const linha of linhas) {
-    const nomeComercial = linha['Nome Comercial'] || linha.nomeComercial || linha.nome || linha.Nome;
-    const empresa = linha['Empresa'] || linha.empresa || linha.marca || linha.Marca || '';
-    const tipoProduto =
-      linha['Tipo Produto'] ||
-      linha.tipoProduto ||
-      linha.tipo ||
-      linha.Tipo ||
-      'Não informado';
-    const phRaw = linha['pH_FISPQ'] ?? linha.phFispq ?? linha.ph ?? linha.pH ?? null;
-    const urlFispq = linha['FISPQ_url'] || linha.urlFispq || linha.url || linha.FISPQ || '';
+    // ✅ SUA PLANILHA USA SNAKE_CASE (confirmado): nome_comercial, empresa, ph_fispq, url_fispq
+    const nomeComercial = String(linha.nome_comercial || '').trim();
 
-    if (!nomeComercial) {
+    if (nomeComercial === '') {
       ignorados += 1;
       continue;
     }
 
+    const empresa = String(linha.empresa || '').trim();
+
+    // A planilha NÃO tem tipo; mantém default fixo
+    const tipoProduto = 'Não informado';
+
+    const phRaw = linha.ph_fispq;
+    const urlFispq = String(linha.url_fispq || '').trim();
+
     const payload = {
       nomeComercial,
       empresa,
-      tipoProduto: tipoProduto || 'Não informado',
+      tipoProduto,
       nome_key: normalizeKey(nomeComercial),
-      createdAt: admin.database.ServerValue.TIMESTAMP
+      createdAt: admin.database.ServerValue.TIMESTAMP,
     };
 
     const phValue = parsePhValue(phRaw);
-    if (phValue !== null) {
-      payload.phFispq = phValue;
-    }
+    if (phValue !== null) payload.phFispq = phValue;
 
-    if (urlFispq) {
-      payload.urlFispq = urlFispq;
-    }
+    if (urlFispq) payload.urlFispq = urlFispq;
 
     await catalogoRef.push(payload);
     inseridos += 1;
