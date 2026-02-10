@@ -50,11 +50,33 @@
         return normalized;
     }
 
+    function parsePhFispq(value) {
+        if (value === null || value === undefined) {
+            return null;
+        }
+
+        if (typeof value === 'number') {
+            return Number.isFinite(value) ? value : null;
+        }
+
+        if (typeof value === 'string') {
+            const normalized = value.trim().replace(',', '.');
+            if (!normalized) {
+                return null;
+            }
+
+            const parsed = Number(normalized);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        return null;
+    }
+
     function buildProdutoPayload(produto, user) {
         const nomeComercial = (produto?.nomeComercial || produto?.nome || '').toString().trim();
         const empresa = (produto?.empresa || produto?.marca || '').toString().trim();
         const tipoProduto = assertTipoProduto(produto?.tipoProduto);
-        const phFispq = Number.isFinite(produto?.phFispq) ? produto.phFispq : null;
+        const phFispq = parsePhFispq(produto?.phFispq);
         const urlFispq = (produto?.urlFispq || '').toString().trim();
 
         return {
@@ -156,14 +178,44 @@
             .slice(0, limit);
     }
 
+    function subscribeUserProdutos(callback, { limit = DEFAULT_LIMIT } = {}) {
+        if (typeof callback !== 'function') {
+            throw new Error('Callback obrigatório para subscribeUserProdutos');
+        }
+
+        const user = getCurrentUser();
+        const database = getDatabase();
+        const query = getUserCatalogoRef(database, user)
+            .orderByChild('createdAt')
+            .limitToLast(limit);
+
+        const onValue = (snapshot) => {
+            const data = snapshot.val() || {};
+            const produtos = Object.entries(data).map(([id, produto]) => ({
+                id,
+                ...produto,
+                source: 'usuario'
+            }));
+            callback(produtos);
+        };
+
+        query.on('value', onValue);
+
+        return () => {
+            query.off('value', onValue);
+        };
+    }
+
     window.productsService = {
         normalizeTexto,
         normalizeKey,
+        parsePhFispq,
         saveUserProdutoRTDB,
         saveGlobalProdutoRTDB,
         listUserProdutos,
         listCatalogoProdutos,
         searchUserProdutosByTerm,
-        searchCatalogoProdutosByTerm
+        searchCatalogoProdutosByTerm,
+        subscribeUserProdutos
     };
 })();

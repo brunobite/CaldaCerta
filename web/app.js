@@ -3286,7 +3286,6 @@
                 await db.ref('users/' + user.uid).set({
                     name: name,
                     email: email,
-                    isAdmin: false,
                     createdAt: new Date().toISOString()
                 });
 
@@ -3341,7 +3340,8 @@
                 try {
                     const snapshot = await db.ref('users/' + user.uid).once('value');
                     const userData = snapshot.val();
-                    isUserAdmin = userData?.isAdmin === true;
+                    const tokenResult = await auth.currentUser.getIdTokenResult();
+                    isUserAdmin = tokenResult?.claims?.admin === true;
                     
                     // Atualizar UI
                     document.getElementById('user-email-display').textContent = user.email;
