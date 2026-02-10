@@ -449,26 +449,20 @@
             }
         }
 
-        async function fetchUserProdutosByTerm(termo) {
-            if (!window.productsService?.searchUserProdutosByTerm) {
+        async function fetchProdutosByTerm(termo) {
+            if (!window.productsService?.searchByTokenIndex) {
                 return [];
             }
-            try {
-                return await window.productsService.searchUserProdutosByTerm(termo, { limit: 50 });
-            } catch (error) {
-                console.warn('⚠️ Falha ao carregar produtos do usuário:', error);
-                return [];
-            }
-        }
 
-        async function fetchCatalogoProdutosByTerm(termo) {
-            if (!window.productsService?.searchCatalogoProdutosByTerm) {
+            if (!navigator.onLine) {
+                showToast('offline: busca completa requer internet', 'warning');
                 return [];
             }
+
             try {
-                return await window.productsService.searchCatalogoProdutosByTerm(termo, { limit: 50 });
+                return await window.productsService.searchByTokenIndex(termo, { limit: 50 });
             } catch (error) {
-                console.warn('⚠️ Falha ao carregar catálogo global:', error);
+                console.warn('⚠️ Falha ao carregar busca abrangente:', error);
                 return [];
             }
         }
@@ -484,14 +478,7 @@
 
             try {
                 renderProdutoResultados([], 'Carregando...', true);
-                const userProdutos = await fetchUserProdutosByTerm(filtro);
-                const catalogoProdutos = await fetchCatalogoProdutosByTerm(filtro);
-
-                const merged = [
-                    ...userProdutos,
-                    ...catalogoProdutos
-                ];
-                produtoResultados = merged;
+                produtoResultados = await fetchProdutosByTerm(filtro);
                 renderProdutoResultados(produtoResultados, 'Nenhum produto encontrado', true);
 
                 const resultados = document.getElementById('p_banco_resultados');
