@@ -241,8 +241,8 @@
             });
             const tipoSelect = document.getElementById('p_tipo');
             if (tipoSelect) {
-                tipoSelect.disabled = isReadonly;
-                tipoSelect.classList.toggle('input-readonly', isReadonly);
+                tipoSelect.disabled = false;
+                tipoSelect.classList.remove('input-readonly');
             }
             const hint = document.getElementById('produto-detalhes-readonly');
             if (hint) {
