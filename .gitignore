@@ -10,3 +10,9 @@ serviceAccountKey.json
 .DS_Store
 *.log
 produtos.xlsx
+
+# secrets
+serviceAccountKey.json
+*.pem
+*.key
+
