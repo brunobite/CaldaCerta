@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "caldacerta",
   "version": "1.0.0",
   "private": true,
@@ -11,8 +11,10 @@
     "fix-all": "node scripts/reset-produtos.js --serviceAccount=./serviceAccountKey.json --excelPath=./produtos.xlsx"
   },
   "dependencies": {
-    "firebase-admin": "^13.6.1",
-    "xlsx": "^0.18.5",
     "firebase": "^10.7.0"
+  },
+  "devDependencies": {
+    "firebase-admin": "^13.6.1",
+    "xlsx": "^0.18.5"
   }
 }
