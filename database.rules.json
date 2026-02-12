@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "produtos_usuarios": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "produtos_catalogo": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.admin === true"
+    }
+  }
+}

@@ -195,3 +195,52 @@ Para dúvidas, entre em contato ou consulte a documentação do Node.js e SQLite
 
 **Versão:** 1.0.0  
 **Desenvolvido para gestão profissional de caldas agrícolas** 🌾
+
+## 🔎 Busca abrangente de produtos (RTDB com índice por tokens)
+
+A busca typeahead agora usa índice em Realtime Database, sem depender de `limitToLast(50)` para o universo pesquisável.
+
+### Estrutura de índice
+
+- Catálogo global: `/produtos_catalogo_busca/{token}/{produtoId}: true`
+- Produtos de usuário: `/produtos_usuarios_busca/{uid}/{token}/{produtoId}: true`
+
+A tokenização normaliza texto (lowercase, sem acentos) e gera prefixos (mínimo 2 caracteres).
+
+### 1) Gerar `nome_key` (backfill)
+
+> **Não versionar o arquivo de chave**. Use um arquivo local fora do Git.
+
+```bash
+npm run rtdb:backfill-nome-key -- --serviceAccount /caminho/seguro/serviceAccountKey.json --databaseURL https://caldacerta-pro-default-rtdb.firebaseio.com --mode all --batch 250
+```
+
+Dry-run:
+
+```bash
+npm run rtdb:backfill-nome-key -- --serviceAccount /caminho/seguro/serviceAccountKey.json --databaseURL https://caldacerta-pro-default-rtdb.firebaseio.com --mode all --dry-run
+```
+
+### 2) Construir/atualizar índice de tokens
+
+```bash
+npm run rtdb:build-index -- --serviceAccount /caminho/seguro/serviceAccountKey.json --databaseURL https://caldacerta-pro-default-rtdb.firebaseio.com --mode all --batch 250
+```
+
+Dry-run:
+
+```bash
+npm run rtdb:build-index -- --serviceAccount /caminho/seguro/serviceAccountKey.json --databaseURL https://caldacerta-pro-default-rtdb.firebaseio.com --mode all --dry-run
+```
+
+### 3) Testar localmente
+
+1. Inicie o app.
+2. Abra o campo de busca de produtos.
+3. Digite `Abamectin` (ou `abam`).
+4. Se existir no RTDB indexado, o produto deve aparecer no dropdown.
+
+### Regras do RTDB (documentação)
+
+- Para leitura direta por path (`/produtos_catalogo_busca/{token}` e `/produtos_usuarios_busca/{uid}/{token}`), geralmente não é necessário `.indexOn`.
+- Mantenha `.indexOn` nas coleções de produtos para campos já usados por queries ordenadas, como `nome_key` e `createdAt`.

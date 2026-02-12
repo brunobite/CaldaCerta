@@ -1,18 +1,17 @@
-﻿node_modules/
+node_modules/
 **/node_modules/
+
 serviceAccountKey.json
 *.key
 *.pem
 *.p12
 *.crt
+
 .env
 *.env
+
 .DS_Store
 *.log
-produtos.xlsx
 
-# secrets
-serviceAccountKey.json
-*.pem
-*.key
+produtos.xlsx
 
