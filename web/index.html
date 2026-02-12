@@ -24,11 +24,8 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
-<!-- Configuração Firebase INLINE -->
-
-
-<!-- API Configuration Mock (para compatibilidade com código existente) -->
-
+<!-- Configuração Firebase -->
+    <script src="firebase-config.js"></script>
 
         <link rel="stylesheet" href="styles.css">
         <link rel="stylesheet" href="navbar-clean.css">
@@ -307,7 +304,7 @@
                         <input type="number" id="agua_ph" class="input-box" placeholder="7.0" step="0.1" min="0" max="14">
                     </div>
                     <div>
-                        <label class="label-text">Dureza (µS/cm)</label>
+                        <label class="label-text">Condutividade Elétrica (µS/cm)</label>
                         <input type="number" id="agua_dureza" class="input-box" placeholder="0" step="1" min="0" oninput="checkWaterHardness()">
                     </div>
                     <div>
@@ -346,16 +343,7 @@
                 <div class="card card-compact mb-4">
                     <h4 class="font-bold text-sm text-slate-700 mb-3 uppercase">Fonte de Dados Meteorológicos</h4>
 
-                    <label class="label-text">Buscar por Estado / Cidade (Indisponível)</label>
-                    <div class="city-search-row">
-                        <select id="clima_estado" disabled>
-                            <option value="">Estado (UF)</option>
-                        </select>
-                        <select id="clima_cidade" disabled>
-                            <option value="">Cidade</option>
-                        </select>
-                    </div>
-                    <p class="text-xs text-slate-500 mt-2">Busca por Estado/Cidade indisponível. Use a localização GPS ou informe latitude/longitude.</p>
+                    <p class="text-xs text-slate-500 mb-3">Informe as coordenadas manualmente ou use o botão de localização GPS abaixo.</p>
 
                     <div class="grid grid-2 mb-3">
                         <div>
@@ -705,6 +693,7 @@
 
     <!-- SCRIPTS DE AUTENTICAÇÃO -->
 
+    <script src="utils.js"></script>
     <script src="api-config.js"></script>
     <script src="productsService.js"></script>
     <script src="app.js"></script>

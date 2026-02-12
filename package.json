@@ -11,15 +11,17 @@
     "build-index": "node scripts/build-simple-index.js",
     "fix-all": "node scripts/reset-produtos.js --serviceAccount=./serviceAccountKey.json --databaseURL=https://caldacerta-pro-default-rtdb.firebaseio.com --excelPath=./server/data/produtos.xlsx",
 
-    "rtdb:backfill-nome-key": "npm --prefix servidor exec -- node ../scripts/rtdb-fix/backfill_nome_key_rtdb.js",
-    "rtdb:build-index": "npm --prefix servidor exec -- node ../scripts/rtdb-fix/build_tokens_index_rtdb.js",
-    "rtdb:verify-index": "npm --prefix servidor exec -- node ../scripts/rtdb-fix/verify_index.js"
+    "rtdb:backfill-nome-key": "node scripts/rtdb-fix/backfill_nome_key_rtdb.js",
+    "rtdb:build-index": "node scripts/rtdb-fix/build_tokens_index_rtdb.js",
+    "rtdb:verify-index": "node scripts/rtdb-fix/verify_index.js",
+    "test": "jest"
   },
   "dependencies": {
     "firebase": "^10.7.0"
   },
   "devDependencies": {
     "firebase-admin": "^13.6.1",
+    "jest": "^29.7.0",
     "xlsx": "^0.18.5"
   }
 }
