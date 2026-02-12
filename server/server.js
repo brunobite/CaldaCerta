@@ -16,13 +16,16 @@ const WEATHER_CACHE_TTL_MS = Number(process.env.WEATHER_CACHE_TTL_MS) || 3 * 60 
 const weatherCache = new Map();
 const GEOCODE_CACHE_TTL_MS = Number(process.env.GEOCODE_CACHE_TTL_MS) || 24 * 60 * 60 * 1000;
 const geocodeCache = new Map();
+const MAX_CACHE_SIZE = 1000;
 
+let xlsxCache = null;
+let xlsxCacheMtime = null;
+
+const isDev = process.env.NODE_ENV !== 'production';
 const ALLOWED_ORIGINS = new Set([
   'https://caldacerta.onrender.com',
-  'http://localhost:5500',
-  'http://127.0.0.1:5500',
+  ...(isDev ? ['http://localhost:5500', 'http://127.0.0.1:5500'] : []),
 ]);
-const isDev = process.env.NODE_ENV !== 'production';
 
 app.use((req, res, next) => {
   if (isDev) {
@@ -265,11 +268,18 @@ function loadProdutosXlsx() {
     error.filePath = filePath;
     throw error;
   }
+  const currentMtime = stats.mtime.getTime();
+  if (xlsxCache && xlsxCacheMtime === currentMtime) {
+    console.log(`[produtos] returning cached result (mtime unchanged)`);
+    return { rows: xlsxCache, filePath, stats };
+  }
   console.log(`[produtos] mtime=${stats.mtime.toISOString()} size=${stats.size}`);
   const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+  xlsxCache = rows;
+  xlsxCacheMtime = currentMtime;
   return { rows, filePath, stats };
 }
 
@@ -284,6 +294,10 @@ function getCachedWeather(cacheKey) {
 }
 
 function setCachedWeather(cacheKey, payload) {
+  if (weatherCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = weatherCache.keys().next().value;
+    weatherCache.delete(oldestKey);
+  }
   weatherCache.set(cacheKey, {
     expiresAt: Date.now() + WEATHER_CACHE_TTL_MS,
     payload,
@@ -308,6 +322,10 @@ function getCachedGeocode(cacheKey) {
 }
 
 function setCachedGeocode(cacheKey, payload) {
+  if (geocodeCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = geocodeCache.keys().next().value;
+    geocodeCache.delete(oldestKey);
+  }
   geocodeCache.set(cacheKey, {
     expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS,
     payload,
@@ -364,6 +382,10 @@ app.get('/api/status', (req, res) => {
 });
 
 app.get('/api/produtos/_debug', (req, res) => {
+  if (!isDev) {
+    res.status(403).json({ error: 'Debug endpoint disabled in production.' });
+    return;
+  }
   try {
     const { rows, filePath, stats } = loadProdutosXlsx();
     const sampleFirstNames = rows
@@ -674,9 +696,29 @@ app.get('/api/simulacoes/:id', async (req, res) => {
   }
 });
 
+const SIMULACAO_ALLOWED_FIELDS = new Set([
+  'cliente', 'propriedade', 'talhao', 'cultura', 'data_aplicacao', 'area',
+  'responsavel', 'objetivo', 'tanque_capacidade', 'vazao', 'operador',
+  'rendimento', 'agua_ph', 'agua_dureza', 'agua_origem', 'agua_observacoes',
+  'calda_ph', 'jarra_volume', 'respeitar_hierarquia', 'criterio_ordenacao',
+  'produtos', 'uid', 'userEmail', 'updatedAt', 'createdAt',
+]);
+const SIMULACAO_MAX_PAYLOAD_BYTES = 50 * 1024;
+
 app.post('/api/simulacoes', async (req, res) => {
   try {
-    const payload = req.body || {};
+    const raw = req.body || {};
+    const bodySize = JSON.stringify(raw).length;
+    if (bodySize > SIMULACAO_MAX_PAYLOAD_BYTES) {
+      res.status(413).json({ error: 'Payload excede o limite de 50KB.' });
+      return;
+    }
+    const payload = {};
+    for (const key of Object.keys(raw)) {
+      if (SIMULACAO_ALLOWED_FIELDS.has(key)) {
+        payload[key] = raw[key];
+      }
+    }
     const simulacoes = await readJsonFile(SIMULACOES_PATH, []);
     const now = new Date().toISOString();
     const novoRegistro = {

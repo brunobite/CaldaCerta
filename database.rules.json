@@ -1,14 +1,52 @@
 {
   "rules": {
-    "produtos_usuarios": {
+    ".read": false,
+    ".write": false,
+
+    "simulacoes": {
+      ".read": "auth != null && auth.token.admin === true",
+
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true)",
+        ".write": "auth != null && auth.uid === $uid",
+
+        "$simId": {
+          ".validate": "newData.hasChildren(['cliente', 'data_aplicacao']) && newData.child('cliente').isString() && newData.child('data_aplicacao').isString()"
+        }
+      }
+    },
+
+    "users": {
+      ".read": "auth != null && auth.token.admin === true",
+
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true)",
         ".write": "auth != null && auth.uid === $uid"
       }
     },
+
     "produtos_catalogo": {
       ".read": "auth != null",
       ".write": "auth != null && auth.token.admin === true"
+    },
+
+    "produtos_catalogo_busca": {
+      ".read": "auth != null",
+      ".write": "auth != null && auth.token.admin === true"
+    },
+
+    "produtos_usuarios": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "produtos_usuarios_busca": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }

@@ -1,5 +1,5 @@
 // CaldaCerta - Service Worker v1
-const CACHE_NAME = "caldacerta-v1";
+const CACHE_NAME = "caldacerta-v2";
 
 // Arquivos locais essenciais
 const LOCAL_ASSETS = [
@@ -7,8 +7,12 @@ const LOCAL_ASSETS = [
   "/index.html",
   "/app.js",
   "/styles.css",
+  "/navbar-clean.css",
+  "/layout-integration.css",
   "/firebase-config.js",
+  "/utils.js",
   "/api-config.js",
+  "/productsService.js",
   "/manifest.webmanifest",
   "/icons/icon-192.png",
   "/icons/icon-512.png",

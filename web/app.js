@@ -1,65 +1,37 @@
 // ============================================
-    // CONFIGURAÇÃO DO FIREBASE
-    // ============================================
-    // IMPORTANTE: Substitua com suas credenciais reais do Firebase
-    // Para obter suas credenciais:
-    // 1. Acesse: https://console.firebase.google.com/
-    // 2. Selecione seu projeto (ou crie um novo)
-    // 3. Vá em Configurações do Projeto (ícone de engrenagem)
-    // 4. Role até "Seus aplicativos" e selecione o app web
-    // 5. Copie o objeto firebaseConfig
+// CaldaCerta Pro - Aplicação Principal
+// Firebase é inicializado em firebase-config.js
+// ============================================
+(function() {
+    'use strict';
 
-    const firebaseConfig = {
-  apiKey: "AIzaSyCWLwnpqAVyreJmj6Nsto7vox-B3SuOlFY",
-  authDomain: "caldacerta-pro.firebaseapp.com",
-  databaseURL: "https://caldacerta-pro-default-rtdb.firebaseio.com",
-  projectId: "caldacerta-pro",
-  storageBucket: "caldacerta-pro.firebasestorage.app",
-  messagingSenderId: "980579278802",
-  appId: "1:980579278802:web:c15f7e6cd2721580c3720b"
-};
+    // Referências Firebase (inicializadas em firebase-config.js)
+    const auth = window.auth;
+    const db = window.database;
 
-    // Inicializar Firebase
-    try {
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-    } catch (error) {
-        console.error('❌ Erro ao inicializar Firebase:', error);
-    }
-    
-    // Criar referências globais
-    window.auth = firebase.auth();
-    window.database = firebase.database();
-    
-
-    // Habilitar persistência offline do Realtime Database
-    firebase.database().goOnline();
-    firebase.database().ref('.info/connected').on('value', (snap) => {
-        window._firebaseConnected = !!snap.val();
-        document.dispatchEvent(new CustomEvent('firebase-connection', {
-            detail: { connected: window._firebaseConnected }
-        }));
-        if (snap.val()) {
-            console.log('[Offline] Firebase conectado');
-        } else {
-            console.log('[Offline] Firebase desconectado - usando cache local');
-        }
-    }, (error) => {
-        window._firebaseConnected = false;
-        console.error('❌ Erro ao monitorar conexão Firebase:', error);
-    });
-
-    console.log('🔥 Firebase inicializado com sucesso!');
-
-// Objeto API mock para não quebrar código legado
+    // Objeto API mock para não quebrar código legado
     window.API = window.API || {};
     if (typeof window.API_BASE === 'undefined') {
         window.API_BASE = '';
     }
 
-// VERSÃO COM API - BACKEND NODE.JS + SQLITE
-        // A configuração da API está em api-config.js
+    // Utilitários de segurança (definidos em utils.js, carregado antes)
+    const escapeHtml = window.escapeHtml;
+    const sanitizeUrl = window.sanitizeUrl;
+
+    // ============================================
+    // DADOS MOCK DE CLIMA (fallback único)
+    // ============================================
+    const MOCK_DELTA_T = [
+        2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+        3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2,
+        2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
+        3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
+    ];
+    const MOCK_TEMPS = [18,17,16,16,17,19,21,24,27,29,31,32,33,33,32,31,29,27,25,23,22,21,20,19];
+    const MOCK_HUMIDITY = [85,88,90,91,89,85,78,70,60,52,45,40,38,37,40,45,52,60,68,74,78,82,84,85];
+    const MOCK_WIND = [5,4,3,3,4,6,8,10,12,14,15,16,16,15,14,12,10,8,7,6,5,5,4,4];
+    const MOCK_RAIN = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
 
         let products = [];
         let historicalData = [];
@@ -213,7 +185,8 @@
 
         function preencherDatalist(elementId, dados) {
             const datalist = document.getElementById(elementId);
-            datalist.innerHTML = dados.map(item => `<option value="${item}">`).join('');
+            if (!datalist) return;
+            datalist.innerHTML = dados.map(item => `<option value="${escapeHtml(item)}">`).join('');
         }
 
         function preencherSelectProdutos() {
@@ -667,8 +640,9 @@
             const container = document.getElementById('p_fispq_link');
             if (!container) return;
 
-            if (url) {
-                container.innerHTML = `<a href="${url}" target="_blank" rel="noopener">FISPQ</a>`;
+            const safeUrl = sanitizeUrl(url);
+            if (safeUrl) {
+                container.innerHTML = `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">FISPQ</a>`;
             } else {
                 container.textContent = 'FISPQ: não informado';
             }
@@ -975,7 +949,7 @@
                         const phB = b.ph || 7;
                         return phB - phA;
                     } else {
-                        return a.formulacao.localeCompare(b.formulacao);
+                        return (a.formulacao || '').localeCompare(b.formulacao || '');
                     }
                 }
 
@@ -1200,30 +1174,32 @@
             list.innerHTML = data.map(item => {
                 const date = item.data_aplicacao ? new Date(item.data_aplicacao).toLocaleDateString('pt-BR') : 'Data não informada';
                 const prodCount = getProdutoCount(item);
-                const adminInfo = isUserAdmin ? `<span class="badge badge-accent">Usuário: ${item.userEmail || item.uid || 'N/D'}</span>` : '';
+                const safeId = escapeHtml(item.id);
+                const safeUid = escapeHtml(item.uid || '');
+                const adminInfo = isUserAdmin ? `<span class="badge badge-accent">Usuário: ${escapeHtml(item.userEmail || item.uid || 'N/D')}</span>` : '';
 
                 // Todos os usuários podem editar suas próprias simulações
                 const editButton = `
-                    <button class="btn btn-secondary text-xs" onclick="event.stopPropagation(); viewSimulation('${item.id}', '${item.uid || ''}')">
+                    <button class="btn btn-secondary text-xs" onclick="event.stopPropagation(); viewSimulation('${safeId}', '${safeUid}')">
                         <i class="fa-solid fa-pen mr-1"></i> Editar
                     </button>
                 `;
 
                 return `
-                    <div class="card card-medium history-card" onclick="viewSimulation('${item.id}', '${item.uid || ''}')">
+                    <div class="card card-medium history-card" onclick="viewSimulation('${safeId}', '${safeUid}')">
                         <div class="flex justify-between items-start mb-3">
                             <div>
-                                <h4 class="font-black text-xl text-slate-800 mb-1">${item.cliente || 'Sem cliente'}</h4>
-                                <p class="text-sm text-slate-600">${item.propriedade || ''} - ${item.talhao || ''}</p>
+                                <h4 class="font-black text-xl text-slate-800 mb-1">${escapeHtml(item.cliente || 'Sem cliente')}</h4>
+                                <p class="text-sm text-slate-600">${escapeHtml(item.propriedade || '')} - ${escapeHtml(item.talhao || '')}</p>
                             </div>
                             <div class="flex flex-col items-end gap-2">
-                                <span class="badge badge-primary">${item.cultura || 'N/D'}</span>
+                                <span class="badge badge-primary">${escapeHtml(item.cultura || 'N/D')}</span>
                                 ${editButton}
                             </div>
                         </div>
                         <div class="history-meta text-sm text-slate-500">
-                            <span><i class="fa-solid fa-calendar mr-1"></i>${date}</span>
-                            <span><i class="fa-solid fa-map-marked-alt mr-1"></i>${item.area || 0} ha</span>
+                            <span><i class="fa-solid fa-calendar mr-1"></i>${escapeHtml(date)}</span>
+                            <span><i class="fa-solid fa-map-marked-alt mr-1"></i>${escapeHtml(String(item.area || 0))} ha</span>
                             <span><i class="fa-solid fa-box mr-1"></i>${prodCount} produto${prodCount !== 1 ? 's' : ''}</span>
                         </div>
                         ${adminInfo ? `<div class="mt-2 text-xs text-slate-500">${adminInfo}</div>` : ''}
@@ -1496,8 +1472,9 @@
 
             empty.classList.add('hidden');
             lista.innerHTML = products.map((p, idx) => {
-                const fispqLink = p.urlFispq
-                    ? `<a href="${p.urlFispq}" target="_blank" rel="noopener">FISPQ</a>`
+                const safeUrl = sanitizeUrl(p.urlFispq);
+                const fispqLink = safeUrl
+                    ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener">FISPQ</a>`
                     : `<span class="text-xs text-slate-400">FISPQ: não informado</span>`;
 
                 return `
@@ -1505,13 +1482,13 @@
                     <div class="flex-1">
                         <div class="flex items-center gap-2 mb-1">
                             <span class="badge badge-accent">${idx + 1}</span>
-                            <h4 class="font-bold text-slate-800">${p.nome}</h4>
-                            <span class="badge badge-primary text-xs">${p.formulacao}</span>
+                            <h4 class="font-bold text-slate-800">${escapeHtml(p.nome)}</h4>
+                            <span class="badge badge-primary text-xs">${escapeHtml(p.formulacao)}</span>
                         </div>
                         <p class="text-sm text-slate-600">
-                            ${p.marca} · <span class="font-semibold">${p.dose}</span> L-Kg/ha
+                            ${escapeHtml(p.marca)} · <span class="font-semibold">${escapeHtml(String(p.dose))}</span> L-Kg/ha
                         </p>
-                        <p class="text-sm text-slate-500 mt-1">Tipo: ${getProdutoTipoLabel(p.tipoProduto || p.tipo)}</p>
+                        <p class="text-sm text-slate-500 mt-1">Tipo: ${escapeHtml(getProdutoTipoLabel(p.tipoProduto || p.tipo))}</p>
                         <p class="text-sm text-slate-600 mt-1">${fispqLink}</p>
                     </div>
                     <button onclick="removeProduct(${p.id})" class="btn btn-icon">
@@ -1552,23 +1529,23 @@
             if (dureza <= 150) {
                 alertClass = 'alert-success';
                 icon = 'fa-circle-check';
-                title = 'AGUA MOLE (0–150 µS/cm)';
-                message = 'Agua com baixa dureza. Condição favorável para a maioria das aplicações de defensivos.';
+                title = 'ÁGUA MOLE (0–150 µS/cm)';
+                message = 'Água com baixa condutividade. Condição favorável para a maioria das aplicações de defensivos.';
             } else if (dureza <= 300) {
                 alertClass = 'alert-warning';
                 icon = 'fa-exclamation-circle';
-                title = 'AGUA MODERADAMENTE DURA (150–300 µS/cm)';
-                message = 'Dureza moderada. Pode reduzir a eficácia de alguns herbicidas (ex: glifosato). Considere o uso de adjuvantes sequestrantes.';
+                title = 'ÁGUA COM CONDUTIVIDADE MODERADA (150–300 µS/cm)';
+                message = 'Condutividade moderada. Pode reduzir a eficácia de alguns herbicidas (ex: glifosato). Considere o uso de adjuvantes sequestrantes.';
             } else if (dureza <= 500) {
                 alertClass = 'alert-warning';
                 icon = 'fa-triangle-exclamation';
-                title = 'AGUA DURA (300–500 µS/cm)';
+                title = 'ÁGUA COM ALTA CONDUTIVIDADE (300–500 µS/cm)';
                 message = 'Água dura detectada. Recomenda-se uso de condicionadores de água ou adjuvantes para evitar perda de eficácia dos produtos.';
             } else {
                 alertClass = 'alert-danger';
                 icon = 'fa-triangle-exclamation';
-                title = 'AGUA MUITO DURA (>500 µS/cm)';
-                message = 'Água muito dura! Alto risco de redução na eficácia dos defensivos. Uso de condicionador/adjuvante sequestrante é indispensável.';
+                title = 'ÁGUA COM CONDUTIVIDADE MUITO ALTA (>500 µS/cm)';
+                message = 'Condutividade muito alta! Alto risco de redução na eficácia dos defensivos. Uso de condicionador/adjuvante sequestrante é indispensável.';
             }
 
             container.innerHTML = `
@@ -1607,8 +1584,8 @@
             let displayProducts = respeitar ? sortProductsByHierarchy(products, criterio) : products;
 
             container.innerHTML = displayProducts.map((p, i) => {
-                const doseJarra = ((p.dose * jarra) / vazao).toFixed(2);
-                const doseTanque = ((p.dose * tanque) / vazao).toFixed(2);
+                const doseJarra = vazao > 0 ? ((p.dose * jarra) / vazao).toFixed(2) : '0.00';
+                const doseTanque = vazao > 0 ? ((p.dose * tanque) / vazao).toFixed(2) : '0.00';
                 const volumeTotal = (p.dose * area).toFixed(2);
                 const phDisplay = p.ph ? `pH FISPQ: ${p.ph}` : '';
                 const observacao = p.observacao || '';
@@ -1622,8 +1599,8 @@
                             <div class="ordem-card-header flex justify-between items-center mb-3">
                                 <div class="ordem-card-badges flex items-center gap-3">
                                     <span class="badge badge-primary">Ordem ${i+1}</span>
-                                    <span class="badge badge-accent">${p.formulacao}</span>
-                                    ${phDisplay ? `<span class="badge badge-success">${phDisplay}</span>` : ''}
+                                    <span class="badge badge-accent">${escapeHtml(p.formulacao)}</span>
+                                    ${phDisplay ? `<span class="badge badge-success">${escapeHtml(phDisplay)}</span>` : ''}
                                 </div>
                                 ${respeitar ? '' : `
                                     <select class="input-box ordem-select" aria-label="Selecionar ordem do produto" data-product-id="${p.id}">
@@ -1633,8 +1610,8 @@
                             </div>
                             <div class="ordem-card-content">
                                 <div class="ordem-card-info">
-                                    <h4 class="text-lg font-black text-slate-800 mb-1">${p.nome}</h4>
-                                    <p class="text-sm text-slate-600">${p.marca}</p>
+                                    <h4 class="text-lg font-black text-slate-800 mb-1">${escapeHtml(p.nome)}</h4>
+                                    <p class="text-sm text-slate-600">${escapeHtml(p.marca)}</p>
                                 </div>
                                 <div class="ordem-card-obs">
                                     <textarea
@@ -1675,12 +1652,7 @@
         // Clima
         function checkClimateConditions(deltaTValues) {
             const alertContainer = document.getElementById('alert-container');
-            const deltaT = deltaTValues && deltaTValues.length ? deltaTValues : [
-                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
-                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2,
-                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
-                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
-            ];
+            const deltaT = deltaTValues && deltaTValues.length ? deltaTValues : MOCK_DELTA_T;
             const maxDelta = Math.max(...deltaT);
             const minDelta = Math.min(...deltaT);
 
@@ -1748,12 +1720,7 @@
         }
 
         function buildWindAlert(windValues) {
-            const values = windValues?.length ? windValues : [
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
-            ];
+            const values = windValues?.length ? windValues : MOCK_WIND;
 
             const maxWind = Math.max(...values);
             const minWind = Math.min(...values);
@@ -1806,12 +1773,7 @@
         }
 
         function buildWindSummary(windValues) {
-            const values = windValues?.length ? windValues : [
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4,
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
-            ];
+            const values = windValues?.length ? windValues : MOCK_WIND;
 
             const maxWind = Math.max(...values);
             const minWind = Math.min(...values);
@@ -2537,23 +2499,11 @@
                 const hour = String(i % 24).padStart(2, '0');
                 return `${dayOffset + 1}º dia ${hour}:00`;
             });
-            const deltaSeries = climateData?.deltaT || [
-                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
-                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
-            ];
-            const temperatureSeries = climateData?.temperatures || [
-                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
-                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20
-            ];
-            const humiditySeries = climateData?.humidity || [
-                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
-                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
-            ];
-            const windSeries = climateData?.winds || [
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
-            ];
-            const precipSeries = climateData?.precipitation || Array.from({ length: CLIMATE_HOURS }, () => 0);
+            const deltaSeries = climateData?.deltaT || MOCK_DELTA_T.slice(0, CLIMATE_HOURS);
+            const temperatureSeries = climateData?.temperatures || MOCK_TEMPS;
+            const humiditySeries = climateData?.humidity || MOCK_HUMIDITY;
+            const windSeries = climateData?.winds || MOCK_WIND;
+            const precipSeries = climateData?.precipitation || MOCK_RAIN;
 
             const chartDeltaT = new Chart(document.getElementById('chartDeltaT'), {
                 type: 'line',
@@ -2769,23 +2719,11 @@
                 const hour = String(i % 24).padStart(2, '0');
                 return `${dayOffset + 1}º dia ${hour}:00`;
             });
-            const deltaSeries = climateData?.deltaT || [
-                2, 3, 5, 6, 4, 3, 2, 4, 5, 4, 3, 2,
-                3, 4, 5, 6, 7, 6, 5, 4, 3, 3, 2, 2
-            ];
-            const temperatureSeries = climateData?.temperatures || [
-                20, 21, 22, 23, 24, 26, 28, 30, 32, 33, 34, 33,
-                32, 31, 30, 29, 28, 27, 26, 24, 23, 22, 21, 20
-            ];
-            const humiditySeries = climateData?.humidity || [
-                85, 84, 82, 80, 78, 75, 70, 65, 60, 55, 50, 48,
-                46, 48, 52, 56, 60, 64, 68, 72, 76, 80, 83, 85
-            ];
-            const windSeries = climateData?.winds || [
-                4, 5, 6, 5, 4, 3, 4, 6, 7, 8, 9, 8,
-                7, 6, 5, 6, 7, 6, 5, 4, 4, 3, 3, 4
-            ];
-            const precipSeries = climateData?.precipitation || Array.from({ length: CLIMATE_HOURS }, () => 0);
+            const deltaSeries = climateData?.deltaT || MOCK_DELTA_T.slice(0, CLIMATE_HOURS);
+            const temperatureSeries = climateData?.temperatures || MOCK_TEMPS;
+            const humiditySeries = climateData?.humidity || MOCK_HUMIDITY;
+            const windSeries = climateData?.winds || MOCK_WIND;
+            const precipSeries = climateData?.precipitation || MOCK_RAIN;
 
             deltaTable.innerHTML = hours.map((label, idx) => `
                 <tr>
@@ -3141,7 +3079,7 @@
             } else {
                 toast.style.background = '#15803d';
             }
-            toast.innerHTML = message;
+            toast.textContent = message;
             document.body.appendChild(toast);
 
             setTimeout(() => toast.remove(), 3000);
@@ -3182,13 +3120,7 @@
             }
         });
 
-// ========================================
-        // USAR FIREBASE JÁ INICIALIZADO NO HEAD
-        // ========================================
-        // As variáveis auth e database já foram criadas globalmente
-        const auth = window.auth;
-        const db = window.database;
-        
+        // auth e db já declarados no topo do IIFE
         let currentUserData = null;
         let isUserAdmin = false;
         let lastFirebaseReconnectAt = 0;
