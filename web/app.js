@@ -2291,8 +2291,8 @@
                 p.nome,
                 p.observacao || '-',
                 p.ph ? `${p.ph}` : '-',
-                `${p.dose}`,
-                `${((p.dose * jarra) / vazao).toFixed(2)}`,
+                formatarDoseHa(Number(p.dose) || 0),
+                formatarDoseJarra((p.dose * jarra) / vazao),
                 `${(p.dose * area).toFixed(1)}`,
                 `${((p.dose * tanque) / vazao).toFixed(1)}`
             ]);
