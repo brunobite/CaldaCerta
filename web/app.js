@@ -2116,7 +2116,8 @@
             try {
                 syncProductObservationsFromDom();
 
-                const mixId = currentEditingSimulation?.id || 'lastDraft';
+                const AUTOSAVE_DRAFT_ID = 'lastDraft';
+                const mixId = currentEditingSimulation?.id || AUTOSAVE_DRAFT_ID;
                 const loadDraft = window.loadDraft || (async (id) => {
                     if (!window.OfflineDB?.dbGet) return null;
                     const draftRecord = await window.OfflineDB.dbGet('mix_drafts_local', id);
@@ -2135,21 +2136,66 @@
                     return payload;
                 });
 
-                const rawDraft = await loadDraft(mixId);
-                const draft = rawDraft?.sections ? rawDraft.sections : (rawDraft || {});
-                const existingSnapshot = draft.reportSnapshot || null;
-
-                const snapshot = existingSnapshot || {
-                    mixId,
-                    createdAt: new Date().toISOString(),
-                    versao: '1.0',
-                    identificacao: draft.identificacao,
-                    maquina: draft.maquina,
-                    agua: draft.agua ?? null,
-                    meteo: draft.meteo ?? null,
-                    ordem: draft.ordem,
-                    itens: draft.itens ?? []
+                const normalizeDraftShape = (raw) => {
+                    if (!raw) return {};
+                    if (raw.sections) return raw.sections;
+                    if (raw.payload) return raw.payload;
+                    return raw;
                 };
+
+                const parseNumberOrNull = (value) => {
+                    if (value === '' || value === null || value === undefined) return null;
+                    const parsed = Number(value);
+                    return Number.isFinite(parsed) ? parsed : null;
+                };
+
+                const buildSnapshotFromDraftPayload = (draftPayload, snapshotMixId) => {
+                    const draftFields = draftPayload?.fields || {};
+                    const draftProducts = Array.isArray(draftPayload?.products)
+                        ? draftPayload.products
+                        : (Array.isArray(draftPayload?.itens) ? draftPayload.itens : []);
+
+                    return {
+                        mixId: snapshotMixId,
+                        createdAt: new Date().toISOString(),
+                        versao: '1.0',
+                        identificacao: {
+                            cliente: draftPayload?.identificacao?.cliente ?? draftFields.id_cliente ?? '',
+                            propriedade: draftPayload?.identificacao?.propriedade ?? draftFields.id_propriedade ?? '',
+                            talhao: draftPayload?.identificacao?.talhao ?? draftFields.id_talhao ?? '',
+                            area: draftPayload?.identificacao?.area ?? parseNumberOrNull(draftFields.id_area),
+                            data_aplicacao: draftPayload?.identificacao?.data_aplicacao ?? draftFields.id_data ?? '',
+                            cultura: draftPayload?.identificacao?.cultura ?? draftFields.id_cultura ?? '',
+                            responsavel: draftPayload?.identificacao?.responsavel ?? draftFields.id_responsavel ?? '',
+                            objetivo: draftPayload?.identificacao?.objetivo ?? draftFields.id_objetivo ?? ''
+                        },
+                        maquina: {
+                            tanque: draftPayload?.maquina?.tanque ?? parseNumberOrNull(draftFields.eq_tanque),
+                            vazao: draftPayload?.maquina?.vazao ?? parseNumberOrNull(draftFields.eq_vazao),
+                            operador: draftPayload?.maquina?.operador ?? draftFields.eq_operador ?? '',
+                            jarraVolume: draftPayload?.maquina?.jarraVolume ?? parseNumberOrNull(draftFields.jarra_vol)
+                        },
+                        agua: draftPayload?.agua || {
+                            ph: parseNumberOrNull(draftFields.agua_ph),
+                            dureza: parseNumberOrNull(draftFields.agua_dureza),
+                            origem: draftFields.agua_origem ?? '',
+                            observacoes: draftFields.agua_obs ?? ''
+                        },
+                        meteo: draftPayload?.meteo ?? null,
+                        ordem: Array.isArray(draftPayload?.ordem) ? draftPayload.ordem : [],
+                        itens: draftProducts.map((item) => ({ ...item }))
+                    };
+                };
+
+                const autosaveDraftRaw = await loadDraft(AUTOSAVE_DRAFT_ID);
+                const mixDraftRaw = mixId === AUTOSAVE_DRAFT_ID ? autosaveDraftRaw : await loadDraft(mixId);
+
+                const autosaveDraft = normalizeDraftShape(autosaveDraftRaw);
+                const mixDraft = normalizeDraftShape(mixDraftRaw);
+                const sourceDraft = Object.keys(autosaveDraft).length ? autosaveDraft : mixDraft;
+                const existingSnapshot = autosaveDraft.reportSnapshot || mixDraft.reportSnapshot || null;
+
+                const snapshot = existingSnapshot || buildSnapshotFromDraftPayload(sourceDraft, mixId);
 
                 await saveDraft(mixId, 'reportSnapshot', snapshot);
                 await saveDraft(mixId, 'status', 'finalized');
