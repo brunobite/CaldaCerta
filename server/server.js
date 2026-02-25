@@ -371,6 +371,16 @@ function buildTimeSeriesItem({
 // 🔧 CONFIGURAÇÃO PARA SERVIR O FRONTEND DA PASTA 'web/'
 
 // 1. Servir arquivos estáticos da pasta 'web'
+app.get('/manifest.webmanifest', (req, res) => {
+  res.type('application/manifest+json');
+  res.sendFile(path.join(__dirname, '../web/manifest.webmanifest'));
+});
+
+app.get('/sw.js', (req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(__dirname, '../web/sw.js'));
+});
+
 app.use(express.static(path.join(__dirname, '../web')));
 
 // 2. Servir também arquivos da pasta atual (server) se necessário
