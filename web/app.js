@@ -39,6 +39,15 @@
         const steps = ['menu', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6'];
         let climateData = null;
         let currentEditingSimulation = null;
+        let simulationDraftManager = null;
+
+        const DRAFT_FIELD_IDS = [
+            'id_cliente', 'id_propriedade', 'id_talhao', 'id_area', 'id_data',
+            'id_responsavel', 'id_cultura', 'id_objetivo', 'eq_tanque', 'eq_vazao',
+            'eq_operador', 'agua_ph', 'agua_dureza', 'agua_origem', 'agua_obs',
+            'clima_lat', 'clima_lon', 'jarra_vol', 'respeitarHierarquia',
+            'criterioOrdenacao', 'calda_ph'
+        ];
 
         // Bancos de dados (carregados da API)
         let bancoProdutos = [];
@@ -120,6 +129,109 @@
         }
 
         // ✅ MODO API: leitura / badge / toggle
+
+        function getSimulationDraftPayload() {
+            const fields = {};
+            DRAFT_FIELD_IDS.forEach((id) => {
+                const element = document.getElementById(id);
+                if (!element) return;
+                if (element.type === 'checkbox') {
+                    fields[id] = !!element.checked;
+                } else {
+                    fields[id] = element.value;
+                }
+            });
+
+            return {
+                fields,
+                products: products.map((product) => ({ ...product })),
+                currentStep: steps[currentStepIdx] || '2-1'
+            };
+        }
+
+        function applySimulationDraftPayload(payload) {
+            if (!payload) return;
+
+            const fields = payload.fields || {};
+            Object.entries(fields).forEach(([id, value]) => {
+                const element = document.getElementById(id);
+                if (!element) return;
+                if (element.type === 'checkbox') {
+                    element.checked = !!value;
+                } else {
+                    element.value = value ?? '';
+                }
+            });
+
+            if (Array.isArray(payload.products)) {
+                products = payload.products.map((item) => ({ ...item }));
+                renderProductList();
+            }
+
+            calcRendimento();
+            if (typeof toggleHierarchyOptions === 'function') {
+                toggleHierarchyOptions();
+            }
+            if (typeof renderOrdem === 'function') {
+                renderOrdem();
+            }
+        }
+
+        function updateConnectionStatusBadge(online, firebaseConnected) {
+            const badge = document.getElementById('connection-status-badge');
+            if (!badge) return;
+
+            const isConnected = online && firebaseConnected !== false;
+            badge.classList.toggle('connection-status-online', isConnected);
+            badge.classList.toggle('connection-status-offline', !isConnected);
+            badge.textContent = isConnected ? 'Online' : 'Offline (modo campo)';
+        }
+
+        function initConnectionStatusBadge() {
+            let firebaseConnected = true;
+            const syncBadge = () => updateConnectionStatusBadge(navigator.onLine, firebaseConnected);
+
+            window.addEventListener('online', syncBadge);
+            window.addEventListener('offline', syncBadge);
+            document.addEventListener('firebase-connection', (event) => {
+                if (typeof event?.detail?.connected === 'boolean') {
+                    firebaseConnected = event.detail.connected;
+                    syncBadge();
+                }
+            });
+            syncBadge();
+        }
+
+        function initDraftAutosave() {
+            if (!window.OfflineAutosave) {
+                return;
+            }
+
+            simulationDraftManager = window.OfflineAutosave.createManager({
+                draftId: 'lastDraft',
+                debounceMs: 600,
+                getPayload: getSimulationDraftPayload,
+                applyPayload: applySimulationDraftPayload
+            });
+
+            const root = document.getElementById('main-app');
+            if (root) {
+                const handler = (event) => {
+                    const target = event.target;
+                    if (!(target instanceof Element)) return;
+                    if (!target.closest('[id^="step-2-"]')) return;
+                    simulationDraftManager.scheduleSave();
+                };
+
+                root.addEventListener('input', handler);
+                root.addEventListener('change', handler);
+            }
+
+            simulationDraftManager.loadAndApply().catch((error) => {
+                console.warn('[Autosave] Não foi possível restaurar draft:', error);
+            });
+        }
+
         function getModoAtual() {
             const forced = (localStorage.getItem("MODO_API") || "").toLowerCase();
             if (forced === "local") return "local";
@@ -765,41 +877,11 @@
         window.addEventListener('online', () => {
             console.log('[Offline] Conexão restaurada - sincronizando...');
             OfflineSync.processQueue();
-            updateOfflineIndicator(true);
         });
 
         window.addEventListener('offline', () => {
             console.log('[Offline] Conexão perdida - modo offline ativado');
-            updateOfflineIndicator(false);
         });
-
-        // Indicador visual de status de conexão
-        function updateOfflineIndicator(isOnline) {
-            let indicator = document.getElementById('offline-indicator');
-            if (!indicator) {
-                indicator = document.createElement('div');
-                indicator.id = 'offline-indicator';
-                indicator.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;text-align:center;padding:4px 12px;font-size:13px;font-weight:600;transition:transform 0.3s ease;';
-                document.body.prepend(indicator);
-            }
-            if (isOnline) {
-                indicator.textContent = '✓ Online - dados sincronizados';
-                indicator.style.background = '#15803d';
-                indicator.style.color = '#fff';
-                indicator.style.transform = 'translateY(0)';
-                setTimeout(() => { indicator.style.transform = 'translateY(-100%)'; }, 3000);
-            } else {
-                indicator.textContent = '⚡ Modo Offline - dados serão sincronizados ao reconectar';
-                indicator.style.background = '#f59e0b';
-                indicator.style.color = '#0c0a09';
-                indicator.style.transform = 'translateY(0)';
-            }
-        }
-
-        // Verificar status inicial
-        if (!navigator.onLine) {
-            updateOfflineIndicator(false);
-        }
 
         async function loadHistoryFromServer() {
             if (!shouldUseRemoteApi()) {
@@ -1349,6 +1431,7 @@
                 renderOrdem();
             }
 
+            simulationDraftManager?.scheduleSave?.();
             window.scrollTo({top: 0, behavior: 'smooth'});
         };
 
@@ -1402,6 +1485,7 @@
             document.getElementById('res_rendimento').innerText = "0.0";
             document.getElementById('respeitarHierarquia').checked = true;
             navTo('2-1');
+            simulationDraftManager?.saveNow?.().catch(() => {});
         };
 
         // Produtos
@@ -1458,6 +1542,7 @@
             renderProdutoResultados([], '', false);
 
             showToast('✅ Produto adicionado à lista', 'success');
+            simulationDraftManager?.scheduleSave?.();
         };
 
         function renderProductList() {
@@ -1503,6 +1588,7 @@
             products = products.filter(p => p.id !== id);
             renderProductList();
             showToast('🗑️ Produto removido', 'success');
+            simulationDraftManager?.scheduleSave?.();
         };
 
         // Cálculos
@@ -1564,6 +1650,7 @@
             const product = products.find(p => p.id === productId);
             if (product) {
                 product.observacao = observacao;
+                simulationDraftManager?.scheduleSave?.();
             }
         };
 
@@ -3111,6 +3198,9 @@
             if (atualizarBtn) {
                 atualizarBtn.addEventListener('click', refreshClimate);
             }
+
+            initConnectionStatusBadge();
+            initDraftAutosave();
 
             const latField = document.getElementById('clima_lat');
             const lonField = document.getElementById('clima_lon');
