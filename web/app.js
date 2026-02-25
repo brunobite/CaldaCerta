@@ -2108,29 +2108,80 @@
 
         // PDF + Salvamento unificado
         window.generatePDF = async () => {
-            syncProductObservationsFromDom();
-
-            // Salvar automaticamente no Firebase ao gerar PDF
-            if (currentUserData && products.length > 0) {
-                try {
-                    const payload = _buildSimulationPayload();
-                    await _savePayloadToFirebase(payload);
-                    console.log('✅ Simulação salva automaticamente ao gerar PDF');
-
-                    // Atualizar botão de salvar
-                    const btnSave = document.getElementById('btn-save-cloud');
-                    if (btnSave) {
-                        btnSave.innerHTML = '<i class="fa-solid fa-check"></i> Salvo';
-                        btnSave.classList.add('opacity-50');
-                        btnSave.disabled = true;
-                    }
-
-                    // Recarregar histórico em background
-                    loadHistory().catch(() => {});
-                } catch (saveError) {
-                    console.warn('⚠️ Erro ao salvar antes de gerar PDF:', saveError);
-                }
+            const btnGeneratePdf = document.querySelector('button[onclick="generatePDF()"]');
+            if (btnGeneratePdf) {
+                btnGeneratePdf.disabled = true;
             }
+
+            try {
+                syncProductObservationsFromDom();
+
+                const mixId = currentEditingSimulation?.id || 'lastDraft';
+                const loadDraft = window.loadDraft || (async (id) => {
+                    if (!window.OfflineDB?.dbGet) return null;
+                    const draftRecord = await window.OfflineDB.dbGet('mix_drafts_local', id);
+                    return draftRecord?.payload || null;
+                });
+                const saveDraft = window.saveDraft || (async (id, sectionKey, data) => {
+                    if (!window.OfflineDB?.dbGet || !window.OfflineDB?.dbPut) return null;
+                    const current = await window.OfflineDB.dbGet('mix_drafts_local', id);
+                    const payload = { ...(current?.payload || {}) };
+                    payload[sectionKey] = data;
+                    await window.OfflineDB.dbPut('mix_drafts_local', {
+                        id,
+                        updatedAt: new Date().toISOString(),
+                        payload
+                    });
+                    return payload;
+                });
+
+                const rawDraft = await loadDraft(mixId);
+                const draft = rawDraft?.sections ? rawDraft.sections : (rawDraft || {});
+                const existingSnapshot = draft.reportSnapshot || null;
+
+                const snapshot = existingSnapshot || {
+                    mixId,
+                    createdAt: new Date().toISOString(),
+                    versao: '1.0',
+                    identificacao: draft.identificacao,
+                    maquina: draft.maquina,
+                    agua: draft.agua ?? null,
+                    meteo: draft.meteo ?? null,
+                    ordem: draft.ordem,
+                    itens: draft.itens ?? []
+                };
+
+                await saveDraft(mixId, 'reportSnapshot', snapshot);
+                await saveDraft(mixId, 'status', 'finalized');
+
+                const identificacaoSnapshot = snapshot.identificacao || {};
+                const maquinaSnapshot = snapshot.maquina || {};
+                const ordemSnapshot = Array.isArray(snapshot.ordem) ? snapshot.ordem : [];
+                const snapshotItens = Array.isArray(snapshot.itens) && snapshot.itens.length
+                    ? snapshot.itens
+                    : products;
+
+                // Salvar automaticamente no Firebase ao gerar PDF
+                if (currentUserData && products.length > 0) {
+                    try {
+                        const payload = _buildSimulationPayload();
+                        await _savePayloadToFirebase(payload);
+                        console.log('✅ Simulação salva automaticamente ao gerar PDF');
+
+                        // Atualizar botão de salvar
+                        const btnSave = document.getElementById('btn-save-cloud');
+                        if (btnSave) {
+                            btnSave.innerHTML = '<i class="fa-solid fa-check"></i> Salvo';
+                            btnSave.classList.add('opacity-50');
+                            btnSave.disabled = true;
+                        }
+
+                        // Recarregar histórico em background
+                        loadHistory().catch(() => {});
+                    } catch (saveError) {
+                        console.warn('⚠️ Erro ao salvar antes de gerar PDF:', saveError);
+                    }
+                }
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
@@ -2159,56 +2210,57 @@
 
             doc.text('CLIENTE:', col1, y);
             doc.setFont(undefined, 'normal');
-            doc.text(document.getElementById('id_cliente').value, col1 + 20, y);
+            doc.text(identificacaoSnapshot.cliente || document.getElementById('id_cliente').value, col1 + 20, y);
 
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('PROPRIEDADE:', col1, y);
             doc.setFont(undefined, 'normal');
-            doc.text(document.getElementById('id_propriedade').value, col1 + 30, y);
+            doc.text(identificacaoSnapshot.propriedade || document.getElementById('id_propriedade').value, col1 + 30, y);
 
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('TALHÃO:', col1, y);
             doc.setFont(undefined, 'normal');
-            doc.text(document.getElementById('id_talhao').value, col1 + 20, y);
+            doc.text(identificacaoSnapshot.talhao || document.getElementById('id_talhao').value, col1 + 20, y);
 
             y = 45;
             doc.setFont(undefined, 'bold');
             doc.text('DATA APLICAÇÃO:', col2, y);
             doc.setFont(undefined, 'normal');
-            const dataAplicacao = new Date(document.getElementById('id_data').value).toLocaleDateString('pt-BR');
+            const rawDataAplicacao = identificacaoSnapshot.data_aplicacao || document.getElementById('id_data').value;
+            const dataAplicacao = rawDataAplicacao ? new Date(rawDataAplicacao).toLocaleDateString('pt-BR') : '-';
             doc.text(dataAplicacao, col2 + 35, y);
 
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('CULTURA:', col2, y);
             doc.setFont(undefined, 'normal');
-            doc.text(document.getElementById('id_cultura').value, col2 + 20, y);
+            doc.text(identificacaoSnapshot.cultura || document.getElementById('id_cultura').value, col2 + 20, y);
 
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('ÁREA:', col2, y);
             doc.setFont(undefined, 'normal');
-            doc.text(`${document.getElementById('id_area').value} ha`, col2 + 15, y);
+            doc.text(`${identificacaoSnapshot.area ?? document.getElementById('id_area').value} ha`, col2 + 15, y);
 
             y = 45;
             doc.setFont(undefined, 'bold');
             doc.text('RESP. TÉCNICO:', col3, y);
             doc.setFont(undefined, 'normal');
-            doc.text(document.getElementById('id_responsavel').value, col3 + 35, y);
+            doc.text(identificacaoSnapshot.responsavel || document.getElementById('id_responsavel').value, col3 + 35, y);
 
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('OPERADOR:', col3, y);
             doc.setFont(undefined, 'normal');
-            doc.text(document.getElementById('eq_operador').value, col3 + 25, y);
+            doc.text(maquinaSnapshot.operador || document.getElementById('eq_operador').value, col3 + 25, y);
 
             y += 7;
             doc.setFont(undefined, 'bold');
             doc.text('OBJETIVO:', col3, y);
             doc.setFont(undefined, 'normal');
-            doc.text(document.getElementById('id_objetivo').value, col3 + 23, y);
+            doc.text(identificacaoSnapshot.objetivo || document.getElementById('id_objetivo').value, col3 + 23, y);
 
             y += 12;
             doc.setFontSize(11);
@@ -2217,17 +2269,22 @@
 
             y += 7;
             doc.setFontSize(9);
-            doc.text(`Capacidade: ${document.getElementById('eq_tanque').value} L  |  Vazão: ${document.getElementById('eq_vazao').value} L/ha  |  Rendimento: ${document.getElementById('res_rendimento').innerText} ha/tanque`, col1, y);
+            doc.text(`Capacidade: ${maquinaSnapshot.tanque ?? document.getElementById('eq_tanque').value} L  |  Vazão: ${maquinaSnapshot.vazao ?? document.getElementById('eq_vazao').value} L/ha  |  Rendimento: ${document.getElementById('res_rendimento').innerText} ha/tanque`, col1, y);
 
             y += 10;
-            const jarra = parseFloat(document.getElementById('jarra_vol').value);
-            const vazao = parseFloat(document.getElementById('eq_vazao').value) || 100;
-            const tanque = parseFloat(document.getElementById('eq_tanque').value) || 2000;
-            const area = parseFloat(document.getElementById('id_area').value) || 10;
-            const respeitar = document.getElementById('respeitarHierarquia').checked;
+            const jarra = parseFloat(maquinaSnapshot.jarraVolume ?? document.getElementById('jarra_vol').value);
+            const vazao = parseFloat(maquinaSnapshot.vazao ?? document.getElementById('eq_vazao').value) || 100;
+            const tanque = parseFloat(maquinaSnapshot.tanque ?? document.getElementById('eq_tanque').value) || 2000;
+            const area = parseFloat(identificacaoSnapshot.area ?? document.getElementById('id_area').value) || 10;
+            const respeitar = ordemSnapshot.length > 0 ? true : document.getElementById('respeitarHierarquia').checked;
             const criterio = document.getElementById('criterioOrdenacao').value;
 
-            let displayProducts = respeitar ? sortProductsByHierarchy(products, criterio) : products;
+            let displayProducts = snapshotItens;
+            if (ordemSnapshot.length > 0) {
+                displayProducts = ordemSnapshot;
+            } else if (respeitar) {
+                displayProducts = sortProductsByHierarchy(snapshotItens, criterio);
+            }
 
             const tableData = displayProducts.map((p, i) => [
                 `${i + 1}`,
@@ -2571,8 +2628,13 @@
             doc.text('Análise gerada automaticamente com base nos dados meteorológicos. Consulte um engenheiro agrônomo para decisões finais.', 15, pageHeight - 4);
             doc.setTextColor(0, 0, 0);
 
-            doc.save(`CaldaCerta_${document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
+            doc.save(`CaldaCerta_${identificacaoSnapshot.cliente || document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
             showToast('✅ PDF gerado e simulação salva!', 'success');
+            } finally {
+                if (btnGeneratePdf) {
+                    btnGeneratePdf.disabled = false;
+                }
+            }
         };
 
         // Gráficos
@@ -3395,4 +3457,3 @@
         console.log('🌿 CaldaCerta Pro com Sistema de Login - PRONTO!');
 
 })();
-
