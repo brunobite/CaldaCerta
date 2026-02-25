@@ -28,6 +28,43 @@ function createIndexIfMissing(store, name, keyPath, options) {
   }
 }
 
+function ensureDraftIndices(store) {
+  createIndexIfMissing(store, 'kind', 'kind');
+  createIndexIfMissing(store, 'status', 'status');
+  createIndexIfMissing(store, 'updatedAt', 'updatedAt');
+}
+
+async function migrateLegacyDraftStoreIfNeeded(db, transaction) {
+  if (!db.objectStoreNames.contains('mix_drafts_local')) {
+    return;
+  }
+
+  const drafts = transaction.objectStore('mix_drafts_local');
+
+  if (drafts.keyPath !== 'id') {
+    ensureDraftIndices(drafts);
+    return;
+  }
+
+  const legacyDrafts = await drafts.getAll();
+
+  db.deleteObjectStore('mix_drafts_local');
+
+  const migratedDrafts = db.createObjectStore('mix_drafts_local', { keyPath: 'mixId' });
+  ensureDraftIndices(migratedDrafts);
+
+  for (const draft of legacyDrafts) {
+    const mixId = draft?.mixId ?? draft?.id;
+    if (!mixId) {
+      continue;
+    }
+
+    const next = { ...draft, mixId };
+    delete next.id;
+    await migratedDrafts.put(next);
+  }
+}
+
 async function resolveOpenDB() {
   if (openDBPromise) {
     return openDBPromise;
@@ -64,14 +101,12 @@ export async function getDb() {
   const openDB = await resolveOpenDB();
 
   dbPromise = openDB(DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion) {
+    async upgrade(db, oldVersion, _newVersion, transaction) {
       switch (oldVersion) {
         case 0: {
           const drafts = createStoreIfMissing(db, 'mix_drafts_local', { keyPath: 'mixId' });
           if (drafts) {
-            createIndexIfMissing(drafts, 'kind', 'kind');
-            createIndexIfMissing(drafts, 'status', 'status');
-            createIndexIfMissing(drafts, 'updatedAt', 'updatedAt');
+            ensureDraftIndices(drafts);
           }
 
           const items = createStoreIfMissing(db, 'mix_items_local', { keyPath: ['mixId', 'itemId'] });
@@ -88,6 +123,8 @@ export async function getDb() {
         }
         // falls through
         case 1: {
+          await migrateLegacyDraftStoreIfNeeded(db, transaction);
+
           const outbox = createStoreIfMissing(db, 'outbox_local', {
             keyPath: 'id',
             autoIncrement: true
