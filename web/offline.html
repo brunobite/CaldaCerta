@@ -71,5 +71,12 @@
     <h1>CALDA<span>CERTA</span></h1>
     <p>Sem conexão com a internet. Verifique sua rede e tente novamente.</p>
     <button class="retry-btn" onclick="location.reload()">Tentar Novamente</button>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+        });
+      }
+    </script>
 </body>
 </html>
