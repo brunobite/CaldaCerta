@@ -3896,6 +3896,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 saveOfflineSession(user);
 
+                // CORREÇÃO DEFINITIVA OFFLINE:
+                // db.ref().once('value') não lança erro quando offline — ele trava indefinidamente.
+                // Se não há internet, entrar direto no app com sessão local sem consultar o banco.
+                if (!navigator.onLine) {
+                    const offlineSession = readOfflineSession();
+                    const displayName = offlineSession?.displayName || user.displayName || user.email;
+                    isUserAdmin = false;
+                    showMainAppForAuthenticatedUser(
+                        { uid: user.uid, email: user.email, displayName },
+                        { offlineFallback: true, displayName }
+                    );
+                    showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
+                    return;
+                }
+
                 try {
                     const snapshot = await db.ref('users/' + user.uid).once('value');
                     const userData = snapshot.val();
@@ -3916,12 +3931,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } catch (error) {
                     console.error('Erro ao carregar dados do usuário:', error);
-                    // CORREÇÃO OFFLINE: Firebase Auth restaurou o usuário do cache local,
-                    // mas db.ref().once() falhou pois não há internet.
-                    // Nesse caso, abrir o app com sessão offline em vez de travar na tela de login.
+                    // Fallback para o caso raro de perder conexão exatamente durante o carregamento
                     if (!navigator.onLine) {
                         const offlineSession = readOfflineSession();
                         const displayName = offlineSession?.displayName || user.displayName || user.email;
+                        isUserAdmin = false;
                         showMainAppForAuthenticatedUser(
                             { uid: user.uid, email: user.email, displayName },
                             { offlineFallback: true, displayName }
@@ -3929,7 +3943,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
                     } else {
                         showMainAppForAuthenticatedUser(user);
-                        showToast('⚠️ Erro ao carregar perfil do usuário. Tente recarregar.', 'warning');
+                        showToast('⚠️ Erro ao carregar perfil. Tente recarregar.', 'warning');
                     }
                 }
             } else {
