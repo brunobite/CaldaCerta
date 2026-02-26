@@ -3507,7 +3507,46 @@
         let isUserAdmin = false;
         let lastFirebaseReconnectAt = 0;
         let authResolvedOnce = false;
+        let authBootstrapTimedOut = false;
+        let isUsingOfflineSessionFallback = false;
         let lastLoginButtonLabel = '<i class="fas fa-sign-in-alt"></i> Entrar';
+        const OFFLINE_SESSION_KEY = 'offlineSession';
+
+        function readOfflineSession() {
+            try {
+                const raw = localStorage.getItem(OFFLINE_SESSION_KEY);
+                if (!raw) return null;
+                const session = JSON.parse(raw);
+                if (!session?.uid || !session?.email) return null;
+                return session;
+            } catch (error) {
+                console.warn('Falha ao ler offlineSession:', error);
+                return null;
+            }
+        }
+
+        function saveOfflineSession(user) {
+            if (!user?.uid || !user?.email) {
+                return;
+            }
+
+            localStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify({
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName || user.email,
+                lastLoginAt: new Date().toISOString()
+            }));
+        }
+
+        function clearOfflineSession() {
+            localStorage.removeItem(OFFLINE_SESSION_KEY);
+        }
+
+        function setOfflineSessionBadge(isVisible) {
+            const badge = document.getElementById('offline-session-badge');
+            if (!badge) return;
+            badge.style.display = isVisible ? 'inline-flex' : 'none';
+        }
 
         document.addEventListener('firebase-connection', (event) => {
             if (!event?.detail?.connected) {
@@ -3588,6 +3627,56 @@
             hideAuthError();
         }
 
+        function showMainAppForAuthenticatedUser(user, options = {}) {
+            const isOfflineFallback = options.offlineFallback === true;
+
+            currentUserData = user;
+            isUsingOfflineSessionFallback = isOfflineFallback;
+
+            document.getElementById('user-email-display').textContent = user?.email || '';
+            document.getElementById('auth-overlay').classList.add('hidden');
+            document.getElementById('main-app').classList.add('show');
+            document.getElementById('admin-badge-display').style.display = isUserAdmin ? 'inline-block' : 'none';
+            setOfflineSessionBadge(isOfflineFallback);
+            setLoginFormEnabled(true);
+
+            if (isOfflineFallback) {
+                const footerName = document.getElementById('user-name-footer');
+                const footerEmail = document.getElementById('user-email-footer');
+                if (footerName) footerName.textContent = options.displayName || user?.displayName || 'Usuário';
+                if (footerEmail) footerEmail.textContent = user?.email || '';
+                showAuthError('Offline (sessão local). Reconecte para validar com Firebase.');
+                return;
+            }
+
+            hideAuthError();
+            if (typeof initBancosDados === 'function') {
+                initBancosDados();
+            }
+            if (typeof loadHistory === 'function') {
+                loadHistory();
+            }
+        }
+
+        function fallbackToOfflineSession() {
+            const offlineSession = readOfflineSession();
+            if (!offlineSession) {
+                return false;
+            }
+
+            isUserAdmin = false;
+            showMainAppForAuthenticatedUser({
+                uid: offlineSession.uid,
+                email: offlineSession.email,
+                displayName: offlineSession.displayName || offlineSession.email
+            }, {
+                offlineFallback: true,
+                displayName: offlineSession.displayName || offlineSession.email
+            });
+            showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
+            return true;
+        }
+
         async function handleLogin(e) {
             e.preventDefault();
             const email = document.getElementById('login-email').value;
@@ -3652,6 +3741,7 @@
             }
 
             try {
+                clearOfflineSession();
                 await auth.signOut();
                 clearUserUi();
                 window.history.replaceState(null, '', '/login.html');
@@ -3725,48 +3815,66 @@
         setLoginFormEnabled(false);
         showAuthError('Verificando sessão...');
 
+        if (!auth || typeof auth.onAuthStateChanged !== 'function') {
+            authResolvedOnce = true;
+            console.error('Firebase Auth indisponível no bootstrap');
+            if (!fallbackToOfflineSession()) {
+                showAuthError('Firebase Auth indisponível. Conecte-se para concluir o login.');
+                setLoginFormEnabled(false);
+            }
+            return;
+        }
+
         auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((error) => {
             console.error('Não foi possível aplicar persistência local do Auth:', error);
         });
 
+        const authBootstrapTimeout = setTimeout(() => {
+            if (authResolvedOnce) {
+                return;
+            }
+
+            authBootstrapTimedOut = true;
+            console.warn('Timeout de autenticação: onAuthStateChanged não respondeu em 2000ms');
+            if (!fallbackToOfflineSession()) {
+                showAuthError('Falha ao verificar sessão (timeout). Verifique o carregamento do Firebase SDK e tente novamente.');
+                setLoginFormEnabled(navigator.onLine);
+            }
+        }, 2000);
+
         auth.onAuthStateChanged(async (user) => {
+            clearTimeout(authBootstrapTimeout);
             authResolvedOnce = true;
+
+            if (authBootstrapTimedOut) {
+                console.info('Autenticação respondeu após timeout de bootstrap');
+                authBootstrapTimedOut = false;
+            }
+
             if (user) {
-                currentUserData = user;
-                
+                if (isUsingOfflineSessionFallback && currentUserData?.uid && currentUserData.uid !== user.uid) {
+                    showAuthError('Sessão local divergiu da conta online. Faça login novamente para continuar.');
+                    clearOfflineSession();
+                    await auth.signOut();
+                    return;
+                }
+
+                saveOfflineSession(user);
+
                 try {
                     const snapshot = await db.ref('users/' + user.uid).once('value');
                     const userData = snapshot.val();
                     const tokenResult = await auth.currentUser.getIdTokenResult();
                     isUserAdmin = tokenResult?.claims?.admin === true;
-                    
-                    // Atualizar UI
-                    document.getElementById('user-email-display').textContent = user.email;
-                    document.getElementById('admin-badge-display').style.display = isUserAdmin ? 'inline-block' : 'none';
 
-                    // Atualizar footer com informações do usuário
                     const footerName = document.getElementById('user-name-footer');
                     const footerEmail = document.getElementById('user-email-footer');
                     if (footerName) footerName.textContent = userData?.name || 'Usuário';
                     if (footerEmail) footerEmail.textContent = user.email;
-                    
-                    // Esconder login, mostrar app
-                    document.getElementById('auth-overlay').classList.add('hidden');
-                    document.getElementById('main-app').classList.add('show');
-                    setLoginFormEnabled(true);
-                    hideAuthError();
-                    
-                    // Inicializar sistema
-                    if (typeof initBancosDados === 'function') {
-                        initBancosDados();
-                    }
-                    if (typeof loadHistory === 'function') {
-                        loadHistory();
-                    }
-                    
+
+                    showMainAppForAuthenticatedUser(user);
                     showToast('✅ Bem-vindo(a), ' + (userData?.name || user.email) + '!', 'success');
 
-                    // Sincronizar fila pendente (se houver)
                     if (navigator.onLine) {
                         OfflineSync.processQueue();
                         OutboxSync.processOutbox();
@@ -3776,11 +3884,18 @@
                 }
             } else {
                 currentUserData = null;
+                isUsingOfflineSessionFallback = false;
                 isUserAdmin = false;
                 clearUserUi();
+                setOfflineSessionBadge(false);
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-app').classList.remove('show');
                 document.getElementById('admin-badge-display').style.display = 'none';
+
+                if (fallbackToOfflineSession()) {
+                    return;
+                }
+
                 updateLoginOfflineWarning();
             }
         });

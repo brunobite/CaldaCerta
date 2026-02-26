@@ -25,6 +25,10 @@ if (typeof firebase !== 'undefined') {
   window.auth = firebase.auth();
   window.database = firebase.database();
 
+  window.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((error) => {
+    console.error('Não foi possível configurar persistência LOCAL do Firebase Auth:', error);
+  });
+
   // Habilitar persistência offline do Realtime Database
   firebase.database().goOnline();
   firebase.database().ref('.info/connected').on('value', (snap) => {
