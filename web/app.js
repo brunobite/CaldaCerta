@@ -3,7 +3,7 @@
 // Firebase é inicializado em firebase-config.js
 // ============================================
 const APP_VERSION = 'v1.2.1';
-const BUILD_NUMBER = 1; // ← INCREMENTAR A CADA DEPLOY
+const BUILD_NUMBER = 2; // ← INCREMENTAR A CADA DEPLOY
 const APP_FULL_VERSION = `${APP_VERSION}-build${BUILD_NUMBER}`;
 console.log(`🌿 CaldaCerta ${APP_FULL_VERSION} iniciando...`);
 
@@ -21,6 +21,57 @@ document.addEventListener('DOMContentLoaded', () => {
     // Referências Firebase (inicializadas em firebase-config.js)
     const auth = window.auth;
     const db = window.database;
+
+    const offlineDb = window.OfflineDB;
+
+    async function persistSimulationLocal(record) {
+        if (!offlineDb || !record?.id) return;
+        try {
+            await offlineDb.saveSimulation(record);
+        } catch (error) {
+            console.warn('Falha ao persistir simulação local:', error);
+        }
+    }
+
+    async function enqueueSyncQueue(type, path, payload) {
+        if (!offlineDb) return;
+        try {
+            await offlineDb.enqueueSync({ type, path, payload, synced: false });
+        } catch (error) {
+            console.warn('Falha ao enfileirar sincronização:', error);
+        }
+    }
+
+    async function syncPendingData() {
+        if (!offlineDb || !navigator.onLine || !db) return 0;
+        const queue = await offlineDb.getPendingSyncItems();
+        if (!queue.length) return 0;
+
+        let synced = 0;
+        for (const item of queue) {
+            try {
+                if (item.type === 'create' || item.type === 'update') {
+                    await db.ref(item.path).set(item.payload);
+                } else if (item.type === 'delete') {
+                    await db.ref(item.path).remove();
+                }
+                await offlineDb.markSyncItemDone(item.id);
+                synced += 1;
+            } catch (error) {
+                await offlineDb.bumpSyncItemAttempt(item.id);
+                console.warn('[SyncQueue] Item mantido para próxima tentativa:', item.id, error);
+            }
+        }
+
+        if (synced > 0 && typeof showToast === 'function') {
+            showToast(`✅ ${synced} item(ns) offline sincronizado(s)`, 'success');
+        }
+        return synced;
+    }
+
+    function handleOfflineMode() {
+        console.log('[Offline] Modo offline ativo');
+    }
 
     // Objeto API mock para não quebrar código legado
     window.API = window.API || {};
@@ -1072,20 +1123,22 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         // Sincronizar quando voltar online
-        window.addEventListener('online', () => {
+        window.addEventListener('online', async () => {
             console.log('[Offline] Conexão restaurada - sincronizando...');
-            OfflineSync.processQueue();
-            OutboxSync.processOutbox();
-        });
-
-        document.addEventListener('DOMContentLoaded', () => {
-            if (navigator.onLine) {
-                OutboxSync.processOutbox();
-            }
+            await syncPendingData();
+            await OfflineSync.processQueue();
+            await OutboxSync.processOutbox();
         });
 
         window.addEventListener('offline', () => {
-            console.log('[Offline] Conexão perdida - modo offline ativado');
+            handleOfflineMode();
+        });
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (navigator.onLine) {
+                await syncPendingData();
+                await OutboxSync.processOutbox();
+            }
         });
 
         async function loadHistoryFromServer() {
@@ -1171,9 +1224,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     historicalData = await loadHistoryFromFirebase();
                     console.log(`✅ ${historicalData.length} simulações carregadas do Firebase`);
+                    if (offlineDb && historicalData.length > 0) {
+                        await offlineDb.saveSimulations(historicalData);
+                    }
                 } catch (error) {
                     console.warn('⚠️ Falha ao carregar do Firebase:', error);
                     historicalData = [];
+                }
+
+                if (historicalData.length === 0 && offlineDb) {
+                    historicalData = await offlineDb.getSimulationsByUser(currentUserData.uid);
+                    if (historicalData.length > 0) {
+                        console.log(`✅ ${historicalData.length} simulações carregadas do IndexedDB`);
+                    }
                 }
 
                 // Se Firebase vazio, tentar servidor como fallback
@@ -1368,8 +1431,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? currentEditingSimulation.id
                 : db.ref(`usuarios/${currentUserData.uid}/misturas`).push().key;
 
+            const localSimulationRecord = {
+                id: mixId,
+                uid: currentUserData.uid,
+                userEmail: currentUserData.email,
+                ...payload,
+                updatedAt: now,
+                createdAt: currentEditingSimulation?.createdAt || now
+            };
+
             if (!navigator.onLine) {
+                await persistSimulationLocal(localSimulationRecord);
                 await enqueueSimulationOutbox(mixId, payload);
+                await enqueueSyncQueue(isEditing ? 'update' : 'create', `simulacoes/${currentUserData.uid}/${mixId}`, localSimulationRecord);
                 currentEditingSimulation = null;
                 return;
             }
@@ -1383,14 +1457,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     createdAt: currentEditingSimulation.createdAt || now
                 });
             } else {
-                await db.ref(`simulacoes/${currentUserData.uid}`).push({
-                    ...payload,
-                    userEmail: currentUserData.email,
-                    createdAt: now,
-                    updatedAt: now
-                });
+                await db.ref(`simulacoes/${currentUserData.uid}/${mixId}`).set(localSimulationRecord);
             }
 
+            await persistSimulationLocal(localSimulationRecord);
             currentEditingSimulation = null;
 
             try {
@@ -1569,9 +1639,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 let item = null;
 
                 // Firebase é a fonte primária
-                const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
-                const snapshot = await simRef.once('value');
-                item = snapshot.val();
+                if (navigator.onLine) {
+                    const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
+                    const snapshot = await simRef.once('value');
+                    item = snapshot.val();
+                }
+
+                if (!item && offlineDb) {
+                    item = await offlineDb.dbGet(offlineDb.STORES.SIMULATIONS, id);
+                }
 
                 // Fallback: estrutura legada
                 if (!item) {
@@ -3926,6 +4002,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showToast('✅ Bem-vindo(a), ' + (userData?.name || user.email) + '!', 'success');
 
                     if (navigator.onLine) {
+                        syncPendingData();
                         OfflineSync.processQueue();
                         OutboxSync.processOutbox();
                     }

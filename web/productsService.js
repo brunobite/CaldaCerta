@@ -4,6 +4,27 @@
   const MIN_WORD_LENGTH = 2;
   const DEFAULT_CONCURRENCY = 10;
 
+  const offlineDb = window.OfflineDB;
+
+  async function cacheProducts(products) {
+    if (!offlineDb || !Array.isArray(products) || products.length === 0) return;
+    try {
+      await offlineDb.saveProducts(products);
+    } catch (error) {
+      console.warn('[productsService] Falha ao salvar cache local:', error);
+    }
+  }
+
+  async function getOfflineProducts(uid) {
+    if (!offlineDb) return [];
+    try {
+      return await offlineDb.getProductsByUser(uid);
+    } catch (error) {
+      console.warn('[productsService] Falha ao ler cache local:', error);
+      return [];
+    }
+  }
+
   // --- helpers base (assumidos no app) ---
   function getDatabase() {
     const database = window.database || (firebase && firebase.database && firebase.database());
@@ -143,8 +164,16 @@
     const words = extractWords(term);
     if (words.length === 0) return [];
 
-    const database = getDatabase();
     const user = getCurrentUser();
+    if (!navigator.onLine) {
+      const local = await getOfflineProducts(user.uid);
+      return local.filter((produto) => {
+        const hay = normalizeKey(`${produto.nomeComercial || produto.nome || ''} ${produto.empresa || ''} ${produto.tipoProduto || ''}`);
+        return words.every((w) => hay.includes(w));
+      }).slice(0, limit);
+    }
+
+    const database = getDatabase();
 
     // 1) lê índices por palavra (catálogo + usuário)
     const [catalogoSnaps, usuarioSnaps] = await Promise.all([
@@ -199,8 +228,21 @@
     const database = getDatabase();
     const payload = buildProdutoPayload(produto, user);
     const ref = database.ref(`produtos_usuarios/${user.uid}`).push();
+    const result = { id: ref.key, uid: user.uid, ...payload, source: 'usuario' };
+
+    if (!navigator.onLine) {
+      await cacheProducts([result]);
+      await offlineDb?.enqueueSync({
+        type: 'create',
+        path: `produtos_usuarios/${user.uid}/${ref.key}`,
+        payload: result
+      });
+      return result;
+    }
+
     await ref.set(payload);
-    return { id: ref.key, ...payload, source: 'usuario' };
+    await cacheProducts([result]);
+    return result;
   }
 
   async function saveGlobalProdutoRTDB(produto) {
@@ -214,6 +256,12 @@
 
   async function listUserProdutos({ limit = DEFAULT_LIMIT } = {}) {
     const user = getCurrentUser();
+
+    if (!navigator.onLine) {
+      const local = await getOfflineProducts(user.uid);
+      return local.filter((p) => p.source === 'usuario').slice(0, limit);
+    }
+
     const database = getDatabase();
     const snapshot = await database
       .ref(`produtos_usuarios/${user.uid}`)
@@ -221,10 +269,19 @@
       .limitToLast(limit)
       .once('value');
     const data = snapshot.val() || {};
-    return Object.entries(data).map(([id, produto]) => ({ id, ...produto, source: 'usuario' }));
+    const items = Object.entries(data).map(([id, produto]) => ({ id, uid: user.uid, ...produto, source: 'usuario' }));
+    await cacheProducts(items);
+    return items;
   }
 
   async function listCatalogoProdutos({ limit = DEFAULT_LIMIT } = {}) {
+    const user = getCurrentUser();
+
+    if (!navigator.onLine) {
+      const local = await getOfflineProducts(user.uid);
+      return local.filter((p) => p.source === 'catalogo').slice(0, limit);
+    }
+
     const database = getDatabase();
     const snapshot = await database
       .ref('produtos_catalogo')
@@ -232,7 +289,9 @@
       .limitToLast(limit)
       .once('value');
     const data = snapshot.val() || {};
-    return Object.entries(data).map(([id, produto]) => ({ id, ...produto, source: 'catalogo' }));
+    const items = Object.entries(data).map(([id, produto]) => ({ id, uid: user.uid, ...produto, source: 'catalogo' }));
+    await cacheProducts(items);
+    return items;
   }
 
   // Mantemos nomes esperados pela main, mas apontando pra busca nova

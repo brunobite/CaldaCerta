@@ -1,5 +1,5 @@
 // ATENÇÃO: Incrementar CACHE_VERSION a cada deploy, junto com BUILD_NUMBER em app.js
-const CACHE_VERSION = 4; // ← INCREMENTAR A CADA DEPLOY
+const CACHE_VERSION = 5; // ← INCREMENTAR A CADA DEPLOY
 const CACHE_NAME = `calda-certa-v${CACHE_VERSION}`;
 const APP_SHELL = '/index.html';
 
@@ -35,6 +35,16 @@ function isFirebaseCdnRequest(url) {
 
 function isFirebaseOrGoogleApiRequest(url) {
   return url.hostname.endsWith('firebaseio.com') || url.hostname.endsWith('googleapis.com');
+}
+
+function isStaticCdnRequest(url) {
+  const staticHosts = [
+    'cdn.jsdelivr.net',
+    'cdnjs.cloudflare.com',
+    'fonts.googleapis.com',
+    'fonts.gstatic.com'
+  ];
+  return staticHosts.includes(url.hostname);
 }
 
 async function cacheFirstWithFallback(request, fallbackPath = APP_SHELL) {
@@ -101,7 +111,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  if (isFirebaseCdnRequest(url)) {
+  if (isFirebaseCdnRequest(url) || isStaticCdnRequest(url)) {
     event.respondWith(cacheFirstWithFallback(request));
     return;
   }
