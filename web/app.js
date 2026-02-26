@@ -3506,6 +3506,8 @@
         let currentUserData = null;
         let isUserAdmin = false;
         let lastFirebaseReconnectAt = 0;
+        let authResolvedOnce = false;
+        let lastLoginButtonLabel = '<i class="fas fa-sign-in-alt"></i> Entrar';
 
         document.addEventListener('firebase-connection', (event) => {
             if (!event?.detail?.connected) {
@@ -3547,11 +3549,56 @@
             hideAuthError();
         }
 
+        function setLoginFormEnabled(isEnabled) {
+            const loginForm = document.getElementById('login-form');
+            if (!loginForm) {
+                return;
+            }
+
+            const controls = loginForm.querySelectorAll('input, button');
+            controls.forEach((control) => {
+                control.disabled = !isEnabled;
+            });
+
+            const loginButton = loginForm.querySelector('button[type="submit"]');
+            if (!loginButton) {
+                return;
+            }
+
+            if (isEnabled) {
+                loginButton.innerHTML = lastLoginButtonLabel;
+                return;
+            }
+
+            loginButton.innerHTML = '<i class="fas fa-wifi"></i> Entrar (offline indisponível)';
+        }
+
+        function updateLoginOfflineWarning() {
+            if (!authResolvedOnce || currentUserData) {
+                return;
+            }
+
+            if (!navigator.onLine) {
+                setLoginFormEnabled(false);
+                showAuthError('Sem conexão. Entre uma vez online para habilitar o modo offline');
+                return;
+            }
+
+            setLoginFormEnabled(true);
+            hideAuthError();
+        }
+
         async function handleLogin(e) {
             e.preventDefault();
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
             const btn = e.target.querySelector('button');
+
+            if (!navigator.onLine) {
+                setLoginFormEnabled(false);
+                showAuthError('Sem conexão. Entre uma vez online para habilitar o modo offline');
+                return;
+            }
 
             btn.disabled = true;
             btn.innerHTML = '<span class="loading"></span> Entrando...';
@@ -3562,6 +3609,7 @@
                 showAuthError(getAuthErrorMessage(error.code));
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Entrar';
+                lastLoginButtonLabel = btn.innerHTML;
             }
         }
 
@@ -3638,6 +3686,9 @@
                     switchAuthTab(button.dataset.authTab || 'login');
                 });
             });
+
+            window.addEventListener('online', updateLoginOfflineWarning);
+            window.addEventListener('offline', updateLoginOfflineWarning);
         }
 
         function showAuthError(msg) {
@@ -3671,12 +3722,15 @@
         // LISTENER DE AUTENTICAÇÃO
         // ========================================
         setupAuthUiBindings();
+        setLoginFormEnabled(false);
+        showAuthError('Verificando sessão...');
 
         auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((error) => {
             console.error('Não foi possível aplicar persistência local do Auth:', error);
         });
 
         auth.onAuthStateChanged(async (user) => {
+            authResolvedOnce = true;
             if (user) {
                 currentUserData = user;
                 
@@ -3699,6 +3753,8 @@
                     // Esconder login, mostrar app
                     document.getElementById('auth-overlay').classList.add('hidden');
                     document.getElementById('main-app').classList.add('show');
+                    setLoginFormEnabled(true);
+                    hideAuthError();
                     
                     // Inicializar sistema
                     if (typeof initBancosDados === 'function') {
@@ -3725,6 +3781,7 @@
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-app').classList.remove('show');
                 document.getElementById('admin-badge-display').style.display = 'none';
+                updateLoginOfflineWarning();
             }
         });
 

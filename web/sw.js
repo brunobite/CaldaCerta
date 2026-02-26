@@ -1,4 +1,4 @@
-const CACHE_NAME = 'calda-certa-v2';
+const CACHE_NAME = 'calda-certa-v3';
 const APP_SHELL = '/index.html';
 
 const ASSETS_TO_CACHE = [
@@ -43,7 +43,7 @@ async function cacheFirstWithFallback(request, fallbackPath = APP_SHELL) {
 
   try {
     const networkResponse = await fetch(request);
-    if (networkResponse && networkResponse.ok) {
+    if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, networkResponse.clone());
     }
