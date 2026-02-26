@@ -776,6 +776,160 @@
         }
 
         // ============================================
+        // OUTBOX LOCAL (IndexedDB) PARA SYNC FIREBASE
+        // ============================================
+        const OutboxSync = {
+            DB_NAME: 'caldacerta-outbox',
+            DB_VERSION: 1,
+            STORE_NAME: 'outbox_local',
+
+            _openDB() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+                    req.onupgradeneeded = (event) => {
+                        const localDb = event.target.result;
+                        if (!localDb.objectStoreNames.contains(this.STORE_NAME)) {
+                            const store = localDb.createObjectStore(this.STORE_NAME, {
+                                keyPath: 'id',
+                                autoIncrement: true
+                            });
+                            store.createIndex('status', 'status', { unique: false });
+                            store.createIndex('createdAt', 'createdAt', { unique: false });
+                        }
+                    };
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            },
+
+            async addToOutbox(operationType, payload) {
+                const localDb = await this._openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = localDb.transaction(this.STORE_NAME, 'readwrite');
+                    tx.objectStore(this.STORE_NAME).add({
+                        operationType,
+                        payload,
+                        status: 'pending',
+                        createdAt: new Date().toISOString(),
+                        attempts: 0
+                    });
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                });
+            },
+
+            async _getPendingItems() {
+                const localDb = await this._openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = localDb.transaction(this.STORE_NAME, 'readonly');
+                    const store = tx.objectStore(this.STORE_NAME);
+                    const index = store.indexNames.contains('status') ? store.index('status') : null;
+                    const req = index
+                        ? index.getAll('pending')
+                        : store.getAll();
+
+                    req.onsuccess = () => {
+                        const result = req.result || [];
+                        resolve(index ? result : result.filter((item) => item.status === 'pending'));
+                    };
+                    req.onerror = () => reject(req.error);
+                });
+            },
+
+            async sendToFirebase(operationType, payload) {
+                if (!payload?.uid || !payload?.mixId) {
+                    throw new Error('Payload inválido para sincronização');
+                }
+
+                const { uid, mixId, data } = payload;
+                if (operationType === 'UPSERT_MISTURA') {
+                    await db.ref(`/usuarios/${uid}/misturas/${mixId}`).set(data);
+                    return;
+                }
+
+                if (operationType === 'UPSERT_SNAPSHOT') {
+                    await db.ref(`/usuarios/${uid}/misturas/${mixId}/reportSnapshot`).set(data);
+                    return;
+                }
+
+                if (operationType === 'UPSERT_INDEX') {
+                    await db.ref(`/usuarios/${uid}/mix_index/${mixId}`).set(data);
+                    return;
+                }
+
+                throw new Error(`Tipo de operação não suportado: ${operationType}`);
+            },
+
+            async processOutbox() {
+                if (!navigator.onLine) return 0;
+
+                const pending = await this._getPendingItems();
+                if (!pending.length) return 0;
+
+                const localDb = await this._openDB();
+                let doneCount = 0;
+
+                for (const item of pending) {
+                    try {
+                        await this.sendToFirebase(item.operationType, item.payload);
+                        const tx = localDb.transaction(this.STORE_NAME, 'readwrite');
+                        tx.objectStore(this.STORE_NAME).put({ ...item, status: 'done' });
+                        await new Promise((resolve, reject) => {
+                            tx.oncomplete = () => resolve();
+                            tx.onerror = () => reject(tx.error);
+                        });
+                        doneCount++;
+                    } catch (_) {
+                        const attempts = (item.attempts || 0) + 1;
+                        const status = attempts >= 5 ? 'failed' : 'pending';
+                        const tx = localDb.transaction(this.STORE_NAME, 'readwrite');
+                        tx.objectStore(this.STORE_NAME).put({ ...item, attempts, status });
+                        await new Promise((resolve, reject) => {
+                            tx.oncomplete = () => resolve();
+                            tx.onerror = () => reject(tx.error);
+                        });
+                    }
+                }
+
+                return doneCount;
+            }
+        };
+
+        async function enqueueSimulationOutbox(mixId, payload) {
+            if (!currentUserData?.uid || !mixId) return;
+
+            const indexPayload = {
+                mixId,
+                clienteNome: payload?.cliente || '',
+                dataAplicacao: payload?.data_aplicacao || '',
+                status: 'finalized',
+                updatedAt: new Date().toISOString()
+            };
+
+            const snapshotPayload = payload?.reportSnapshot || null;
+
+            await OutboxSync.addToOutbox('UPSERT_MISTURA', {
+                uid: currentUserData.uid,
+                mixId,
+                data: payload
+            });
+
+            await OutboxSync.addToOutbox('UPSERT_INDEX', {
+                uid: currentUserData.uid,
+                mixId,
+                data: indexPayload
+            });
+
+            if (snapshotPayload) {
+                await OutboxSync.addToOutbox('UPSERT_SNAPSHOT', {
+                    uid: currentUserData.uid,
+                    mixId,
+                    data: snapshotPayload
+                });
+            }
+        }
+
+        // ============================================
         // OFFLINE SYNC QUEUE (IndexedDB)
         // ============================================
         const OfflineSync = {
@@ -877,6 +1031,13 @@
         window.addEventListener('online', () => {
             console.log('[Offline] Conexão restaurada - sincronizando...');
             OfflineSync.processQueue();
+            OutboxSync.processOutbox();
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (navigator.onLine) {
+                OutboxSync.processOutbox();
+            }
         });
 
         window.addEventListener('offline', () => {
@@ -1159,6 +1320,15 @@
             const now = new Date().toISOString();
             const isEditing = currentEditingSimulation &&
                 (isUserAdmin || currentEditingSimulation.uid === currentUserData.uid);
+            const mixId = (isEditing && currentEditingSimulation?.id)
+                ? currentEditingSimulation.id
+                : db.ref(`usuarios/${currentUserData.uid}/misturas`).push().key;
+
+            if (!navigator.onLine) {
+                await enqueueSimulationOutbox(mixId, payload);
+                currentEditingSimulation = null;
+                return;
+            }
 
             if (isEditing && currentEditingSimulation?.id) {
                 const editUid = currentEditingSimulation.uid || currentUserData.uid;
@@ -1178,6 +1348,37 @@
             }
 
             currentEditingSimulation = null;
+
+            try {
+                await OutboxSync.sendToFirebase('UPSERT_MISTURA', {
+                    uid: currentUserData.uid,
+                    mixId,
+                    data: payload
+                });
+
+                await OutboxSync.sendToFirebase('UPSERT_INDEX', {
+                    uid: currentUserData.uid,
+                    mixId,
+                    data: {
+                        mixId,
+                        clienteNome: payload?.cliente || '',
+                        dataAplicacao: payload?.data_aplicacao || '',
+                        status: 'finalized',
+                        updatedAt: now
+                    }
+                });
+
+                if (payload?.reportSnapshot) {
+                    await OutboxSync.sendToFirebase('UPSERT_SNAPSHOT', {
+                        uid: currentUserData.uid,
+                        mixId,
+                        data: payload.reportSnapshot
+                    });
+                }
+            } catch (syncError) {
+                console.warn('⚠️ Falha no sync secundário de usuários. Enfileirando:', syncError);
+                await enqueueSimulationOutbox(mixId, payload);
+            }
 
             // Tentar salvar no servidor também como backup (não bloqueia)
             saveSimulationToServer(payload).catch(e => {
@@ -3441,6 +3642,7 @@
                     // Sincronizar fila pendente (se houver)
                     if (navigator.onLine) {
                         OfflineSync.processQueue();
+                        OutboxSync.processOutbox();
                     }
                 } catch (error) {
                     console.error('Erro:', error);
