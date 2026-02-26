@@ -84,6 +84,11 @@
             PRODUTO: 'outros'
         };
 
+        function shouldUseRemoteApi() {
+            const base = (window.API_BASE || '').toLowerCase();
+            return Boolean(base) && !base.includes('localhost') && !base.includes('127.0.0.1');
+        }
+
         function normalizeProdutoTipo(value) {
             if (!value) return '';
             if (typeof value === 'string') {
@@ -231,42 +236,6 @@
                 console.warn('[Autosave] Não foi possível restaurar draft:', error);
             });
         }
-
-        function getModoAtual() {
-            const forced = (localStorage.getItem("MODO_API") || "").toLowerCase();
-            if (forced === "local") return "local";
-            if (forced === "remoto") return "remoto";
-
-            const base = (window.API_BASE || "");
-            return base.includes("localhost") ? "local" : "remoto";
-        }
-
-        function shouldUseRemoteApi() {
-            return getModoAtual() === "remoto";
-        }
-
-        function atualizarBadgeModo() {
-            const btn = document.getElementById("user-display");
-            if (!btn) return;
-
-            const modo = getModoAtual();
-            const host = location.hostname;
-            const base = window.API_BASE || "(não definido)";
-
-            if (modo === "local") {
-                btn.textContent = "Modo Local";
-                btn.title = `Usando API local (${base}) | host=${host}`;
-            } else {
-                btn.textContent = "Modo Remoto";
-                btn.title = `Usando API remoto (${base}) | host=${host}`;
-            }
-        }
-
-        window.toggleApiMode = () => {
-            const modo = getModoAtual();
-            localStorage.setItem("MODO_API", modo === "local" ? "remoto" : "local");
-            location.reload();
-        };
 
         // Inicializar bancos de dados da API
         async function initBancosDados() {
@@ -3501,9 +3470,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('id_data').value = new Date().toISOString().split('T')[0];
 
-            // ✅ Mostra o modo real (local/remoto) e permite trocar
-            atualizarBadgeModo();
-
             // initBancosDados e loadHistory são chamados pelo auth.onAuthStateChanged
             // Não carregar aqui pois o usuário ainda não está autenticado
             document.getElementById('produto-banco').style.display = 'block';
@@ -3632,10 +3598,46 @@
             }
         }
 
-        function handleLogoutClick() {
-            if (confirm('Deseja realmente sair?')) {
-                auth.signOut();
+        async function handleLogoutClick() {
+            if (!confirm('Deseja realmente sair?')) {
+                return;
             }
+
+            try {
+                await auth.signOut();
+                clearUserUi();
+                window.history.replaceState(null, '', '/login.html');
+                window.location.replace('/login.html');
+            } catch (error) {
+                console.error('Erro ao sair:', error);
+                showToast('❌ Não foi possível sair agora. Tente novamente.', 'error');
+            }
+        }
+
+        function clearUserUi() {
+            const userEmailDisplay = document.getElementById('user-email-display');
+            const footerName = document.getElementById('user-name-footer');
+            const footerEmail = document.getElementById('user-email-footer');
+
+            if (userEmailDisplay) userEmailDisplay.textContent = '';
+            if (footerName) footerName.textContent = '';
+            if (footerEmail) footerEmail.textContent = '';
+        }
+
+        function setupAuthUiBindings() {
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const logoutButton = document.getElementById('header-logout-btn');
+
+            if (loginForm) loginForm.addEventListener('submit', handleLogin);
+            if (registerForm) registerForm.addEventListener('submit', handleRegister);
+            if (logoutButton) logoutButton.addEventListener('click', handleLogoutClick);
+
+            document.querySelectorAll('[data-auth-tab]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    switchAuthTab(button.dataset.authTab || 'login');
+                });
+            });
         }
 
         function showAuthError(msg) {
@@ -3668,6 +3670,12 @@
         // ========================================
         // LISTENER DE AUTENTICAÇÃO
         // ========================================
+        setupAuthUiBindings();
+
+        auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((error) => {
+            console.error('Não foi possível aplicar persistência local do Auth:', error);
+        });
+
         auth.onAuthStateChanged(async (user) => {
             if (user) {
                 currentUserData = user;
@@ -3713,6 +3721,7 @@
             } else {
                 currentUserData = null;
                 isUserAdmin = false;
+                clearUserUi();
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-app').classList.remove('show');
                 document.getElementById('admin-badge-display').style.display = 'none';

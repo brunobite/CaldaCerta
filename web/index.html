@@ -42,14 +42,14 @@
             </div>
 
             <div class="auth-tabs">
-                <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
-                <button class="auth-tab" onclick="switchAuthTab('register')">Cadastro</button>
+                <button class="auth-tab active" type="button" data-auth-tab="login">Login</button>
+                <button class="auth-tab" type="button" data-auth-tab="register">Cadastro</button>
             </div>
 
             <div class="auth-error" id="auth-error"></div>
 
             <!-- FORM LOGIN -->
-            <form id="login-form" onsubmit="handleLogin(event)" style="display:block;">
+            <form id="login-form" style="display:block;">
                 <div class="form-group" style="margin-bottom: 1.5rem;">
                     <label class="label-text">E-MAIL</label>
                     <input type="email" class="input-box" id="login-email" required placeholder="seu@email.com">
@@ -64,7 +64,7 @@
             </form>
 
             <!-- FORM CADASTRO -->
-            <form id="register-form" onsubmit="handleRegister(event)" style="display:none;">
+            <form id="register-form" style="display:none;">
                 <div class="form-group" style="margin-bottom: 1.5rem;">
                     <label class="label-text">NOME COMPLETO</label>
                     <input type="text" class="input-box" id="register-name" required placeholder="Seu nome">
@@ -99,11 +99,7 @@
                 <span id="sync-status-icon" aria-live="polite" title="Verificando sincronização" style="font-size: 1.1rem; font-weight: 700;">⏳</span>
                 <span id="user-email-display" style="display:none;"></span>
                 <span class="admin-badge-header" id="admin-badge-display" style="display: none;">ADMIN</span>
-                <button id="user-display" class="header-mode-btn" type="button" onclick="toggleApiMode()" title="Modo de Acesso">
-                    <i class="fas fa-cloud"></i>
-                    <span>Remoto</span>
-                </button>
-                <button class="header-logout-btn" onclick="handleLogoutClick()" title="Sair">
+                <button id="header-logout-btn" class="header-logout-btn" type="button" title="Sair">
                     <i class="fas fa-sign-out-alt"></i>
                 </button>
             </div>
