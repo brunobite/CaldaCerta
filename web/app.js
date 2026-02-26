@@ -3707,7 +3707,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.innerHTML = '<span class="loading"></span> Entrando...';
 
             try {
-                await auth.signInWithEmailAndPassword(email, password);
+                const credential = await auth.signInWithEmailAndPassword(email, password);
+                // Salvar sessão offline imediatamente após login bem-sucedido
+                // não depender apenas do onAuthStateChanged para isso
+                if (credential?.user) {
+                    saveOfflineSession(credential.user);
+                }
             } catch (error) {
                 showAuthError(getAuthErrorMessage(error.code));
                 btn.disabled = false;
@@ -3755,7 +3760,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                clearOfflineSession();
                 await auth.signOut();
                 clearUserUi();
                 window.history.replaceState(null, '', '/login.html');
@@ -3826,9 +3830,20 @@ document.addEventListener('DOMContentLoaded', () => {
         // LISTENER DE AUTENTICAÇÃO
         // ========================================
         setupAuthUiBindings();
-        const _hasSavedSession = !!readOfflineSession();
-        setLoginFormEnabled(_hasSavedSession);
-        showAuthError('Verificando sessão...');
+
+        // CORREÇÃO OFFLINE: Se não há internet e existe sessão local salva,
+        // restaurar imediatamente sem esperar o Firebase responder
+        if (!navigator.onLine && readOfflineSession()) {
+            showAuthError('Verificando sessão...');
+            setTimeout(() => {
+                if (!currentUserData) {
+                    fallbackToOfflineSession();
+                }
+            }, 300);
+        } else {
+            setLoginFormEnabled(false);
+            showAuthError('Verificando sessão...');
+        }
 
         if (!auth || typeof auth.onAuthStateChanged !== 'function') {
             authResolvedOnce = true;
@@ -3874,6 +3889,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
+                // Limpar sessão anterior se pertencer a outro usuário
+                const existingSession = readOfflineSession();
+                if (existingSession && existingSession.uid !== user.uid) {
+                    clearOfflineSession();
+                }
                 saveOfflineSession(user);
 
                 try {
