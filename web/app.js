@@ -1321,7 +1321,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (mode === 'auto' || mode === 'manual' || mode === 'fispq') {
                 return mode;
             }
-            return document.getElementById('respeitarHierarquia')?.checked ? 'auto' : 'manual';
+            const legacy = document.getElementById('respeitarHierarquia');
+            return legacy?.checked ? 'auto' : 'manual';
         }
 
         function getDisplayProductsByMode(mode) {
@@ -1337,9 +1338,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function syncLegacyHierarchyFlag(mode) {
             const legacy = document.getElementById('respeitarHierarquia');
-            if (legacy) {
-                legacy.checked = mode === 'auto';
-            }
+            if (legacy) legacy.checked = mode === 'auto';
         }
 
         window.toggleHierarchyOptions = () => {
@@ -1721,7 +1720,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('jarra_vol').value = item.jarra_volume || 1000;
                 const orderMode = item.order_mode || (item.respeitar_hierarquia ? 'auto' : 'manual');
                 document.getElementById('orderMode').value = orderMode;
-                document.getElementById('respeitarHierarquia').checked = !!item.respeitar_hierarquia;
+                const legacyHierarchy = document.getElementById('respeitarHierarquia');
+                if (legacyHierarchy) legacyHierarchy.checked = !!item.respeitar_hierarquia;
                 document.getElementById('criterioOrdenacao').value = item.criterio_ordenacao || 'tipo';
 
                 document.getElementById('agua_ph').value = item.agua_ph || '';
@@ -1844,7 +1844,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('id_objetivo').selectedIndex = 0;
             document.getElementById('res_rendimento').innerText = "0.0";
             document.getElementById('orderMode').value = 'auto';
-            document.getElementById('respeitarHierarquia').checked = true;
+            const legacyHierarchy = document.getElementById('respeitarHierarquia');
+            if (legacyHierarchy) legacyHierarchy.checked = true;
             navTo('2-1');
             simulationDraftManager?.saveNow?.().catch(() => {});
         };
