@@ -605,11 +605,13 @@
             </div>
 
             <div class="card card-compact mb-6">
-                <div class="checkbox-container mb-4">
-                    <input type="checkbox" id="respeitarHierarquia" checked onchange="toggleHierarchyOptions()">
-                    <label for="respeitarHierarquia" class="font-bold text-sm" style="cursor: pointer;">
-                        Respeitar hierarquia de mistura
-                    </label>
+                <div class="mb-4">
+                    <label class="label-text">Modo de ordenação</label>
+                    <select id="orderMode" class="input-box" style="margin-bottom: 0;" onchange="toggleHierarchyOptions()">
+                        <option value="auto" selected>Automática</option>
+                        <option value="manual">Manual</option>
+                        <option value="fispq">FISPQ</option>
+                    </select>
                 </div>
 
                 <div id="hierarchyOptions" class="mt-4">
@@ -627,7 +629,7 @@
 
             <h3 class="font-bold text-lg mb-4 text-slate-700">
                 <i class="fa-solid fa-flask text-teal-600 mr-2"></i>
-                Ordem de Mistura (Selecione para reordenar)
+                Ordem de Mistura (modo Manual: use as setas para reordenar)
             </h3>
             <div class="ordem-scroll-container">
                 <div id="ordem-container" class="ordem-inner mb-8"></div>

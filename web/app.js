@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'id_cliente', 'id_propriedade', 'id_talhao', 'id_area', 'id_data',
             'id_responsavel', 'id_cultura', 'id_objetivo', 'eq_tanque', 'eq_vazao',
             'eq_operador', 'agua_ph', 'agua_dureza', 'agua_origem', 'agua_obs',
-            'clima_lat', 'clima_lon', 'jarra_vol', 'respeitarHierarquia',
+            'clima_lat', 'clima_lon', 'jarra_vol', 'orderMode', 'respeitarHierarquia',
             'criterioOrdenacao', 'calda_ph'
         ];
 
@@ -1327,10 +1327,45 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        function sortProductsByFispq(products) {
+            return [...products].sort((a, b) => {
+                const phA = Number.isFinite(Number(a?.ph)) ? Number(a.ph) : Number.POSITIVE_INFINITY;
+                const phB = Number.isFinite(Number(b?.ph)) ? Number(b.ph) : Number.POSITIVE_INFINITY;
+                if (phA !== phB) return phA - phB;
+                return (a?.nome || '').localeCompare(b?.nome || '');
+            });
+        }
+
+        function getCurrentOrderMode() {
+            const mode = document.getElementById('orderMode')?.value;
+            if (mode === 'auto' || mode === 'manual' || mode === 'fispq') {
+                return mode;
+            }
+            const legacy = document.getElementById('respeitarHierarquia');
+            return legacy?.checked ? 'auto' : 'manual';
+        }
+
+        function getDisplayProductsByMode(mode) {
+            const criterio = document.getElementById('criterioOrdenacao').value;
+            if (mode === 'auto') {
+                return sortProductsByHierarchy(products, criterio);
+            }
+            if (mode === 'fispq') {
+                return sortProductsByFispq(products);
+            }
+            return [...products];
+        }
+
+        function syncLegacyHierarchyFlag(mode) {
+            const legacy = document.getElementById('respeitarHierarquia');
+            if (legacy) legacy.checked = mode === 'auto';
+        }
+
         window.toggleHierarchyOptions = () => {
-            const checked = document.getElementById('respeitarHierarquia').checked;
+            const mode = getCurrentOrderMode();
+            syncLegacyHierarchyFlag(mode);
             const options = document.getElementById('hierarchyOptions');
-            options.style.display = checked ? 'block' : 'none';
+            options.style.display = mode === 'auto' ? 'block' : 'none';
             renderOrdem();
         };
 
@@ -1432,7 +1467,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 agua_observacoes: document.getElementById('agua_obs').value,
                 calda_ph: parseFloat(document.getElementById('calda_ph').value) || null,
                 jarra_volume: parseInt(document.getElementById('jarra_vol').value),
-                respeitar_hierarquia: document.getElementById('respeitarHierarquia').checked ? 1 : 0,
+                order_mode: getCurrentOrderMode(),
+                respeitar_hierarquia: getCurrentOrderMode() === 'auto' ? 1 : 0,
                 criterio_ordenacao: document.getElementById('criterioOrdenacao').value,
                 produtos: products
             };
@@ -1732,34 +1768,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                const base = reportSnapshot || item;
-                const identificacao = base.identificacao || {};
-                const maquina = base.maquina || {};
-                const agua = base.agua || {};
+                document.getElementById('id_cliente').value = item.cliente;
+                document.getElementById('id_propriedade').value = item.propriedade;
+                document.getElementById('id_talhao').value = item.talhao || '';
+                document.getElementById('id_area').value = item.area;
+                document.getElementById('id_data').value = item.data_aplicacao;
+                document.getElementById('id_cultura').value = item.cultura;
+                document.getElementById('id_responsavel').value = item.responsavel || '';
+                document.getElementById('id_objetivo').value = item.objetivo || '';
+                document.getElementById('eq_tanque').value = item.tanque_capacidade;
+                document.getElementById('eq_vazao').value = item.vazao;
+                document.getElementById('eq_operador').value = item.operador || '';
+                document.getElementById('jarra_vol').value = item.jarra_volume || 1000;
+                const orderMode = item.order_mode || (item.respeitar_hierarquia ? 'auto' : 'manual');
+                document.getElementById('orderMode').value = orderMode;
+                const legacyHierarchy = document.getElementById('respeitarHierarquia');
+                if (legacyHierarchy) legacyHierarchy.checked = !!item.respeitar_hierarquia;
+                document.getElementById('criterioOrdenacao').value = item.criterio_ordenacao || 'tipo';
 
-                document.getElementById('id_cliente').value = identificacao.cliente || item.cliente || '';
-                document.getElementById('id_propriedade').value = identificacao.propriedade || item.propriedade || '';
-                document.getElementById('id_talhao').value = identificacao.talhao || item.talhao || '';
-                document.getElementById('id_area').value = identificacao.area ?? item.area ?? '';
-                document.getElementById('id_data').value = identificacao.data_aplicacao || item.data_aplicacao || '';
-                document.getElementById('id_cultura').value = identificacao.cultura || item.cultura || '';
-                document.getElementById('id_responsavel').value = identificacao.responsavel || item.responsavel || '';
-                document.getElementById('id_objetivo').value = identificacao.objetivo || item.objetivo || '';
-                document.getElementById('eq_tanque').value = maquina.tanque ?? item.tanque_capacidade ?? '';
-                document.getElementById('eq_vazao').value = maquina.vazao ?? item.vazao ?? '';
-                document.getElementById('eq_operador').value = maquina.operador || item.operador || '';
-                document.getElementById('jarra_vol').value = maquina.jarraVolume || item.jarra_volume || 1000;
-                document.getElementById('respeitarHierarquia').checked = maquina.respeitarHierarquia ?? !!item.respeitar_hierarquia;
-                document.getElementById('criterioOrdenacao').value = maquina.criterioOrdenacao || item.criterio_ordenacao || 'tipo';
+                document.getElementById('agua_ph').value = item.agua_ph || '';
+                document.getElementById('agua_dureza').value = item.agua_dureza || '';
+                document.getElementById('agua_origem').value = item.agua_origem || 'Poço';
+                document.getElementById('agua_obs').value = item.agua_observacoes || '';
+                document.getElementById('calda_ph').value = item.calda_ph || '';
 
-                document.getElementById('agua_ph').value = agua.ph ?? item.agua_ph ?? '';
-                document.getElementById('agua_dureza').value = agua.dureza ?? item.agua_dureza ?? '';
-                document.getElementById('agua_origem').value = agua.origem || item.agua_origem || 'Poço';
-                document.getElementById('agua_obs').value = agua.observacoes || item.agua_observacoes || '';
-                document.getElementById('calda_ph').value = agua.caldaPh ?? item.calda_ph ?? '';
-
-                const sourceProducts = base.itens || item.produtos || [];
-                products = sourceProducts.map(p => ({
+                products = (item.produtos || []).map(p => ({
                     id: p.id || (Date.now() + Math.random()),
                     nome: p.produto_nome || p.nome,
                     marca: p.produto_marca || p.marca,
@@ -1885,7 +1918,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('id_cultura').selectedIndex = 0;
             document.getElementById('id_objetivo').selectedIndex = 0;
             document.getElementById('res_rendimento').innerText = "0.0";
-            document.getElementById('respeitarHierarquia').checked = true;
+            document.getElementById('orderMode').value = 'auto';
+            const legacyHierarchy = document.getElementById('respeitarHierarquia');
+            if (legacyHierarchy) legacyHierarchy.checked = true;
             navTo('2-1');
             simulationDraftManager?.saveNow?.().catch(() => {});
         };
@@ -2065,15 +2100,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const tanque = parseFloat(document.getElementById('eq_tanque').value) || 2000;
             const area = parseFloat(document.getElementById('id_area').value) || 10;
             const container = document.getElementById('ordem-container');
-            const respeitar = document.getElementById('respeitarHierarquia').checked;
-            const criterio = document.getElementById('criterioOrdenacao').value;
+            const mode = getCurrentOrderMode();
+            const isManualMode = mode === 'manual';
 
             if (products.length === 0) {
                 container.innerHTML = '<div class="empty-state"><p class="text-slate-500">Nenhum produto adicionado</p></div>';
                 return;
             }
 
-            let displayProducts = respeitar ? sortProductsByHierarchy(products, criterio) : products;
+            const displayProducts = getDisplayProductsByMode(mode);
 
             container.innerHTML = displayProducts.map((p, i) => {
                 const doseJarra = vazao > 0 ? ((p.dose * jarra) / vazao).toFixed(2) : '0.00';
@@ -2081,9 +2116,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const volumeTotal = (p.dose * area).toFixed(2);
                 const phDisplay = p.ph ? `pH FISPQ: ${p.ph}` : '';
                 const observacao = p.observacao || '';
-                const orderOptions = displayProducts
-                    .map((_, idx) => `<option value="${idx}" ${idx === i ? 'selected' : ''}>Ordem ${idx + 1}</option>`)
-                    .join('');
 
                 return `
                     <div class="product-item ordem-card" data-id="${p.id}">
@@ -2094,6 +2126,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <span class="badge badge-accent">${escapeHtml(p.formulacao)}</span>
                                     ${phDisplay ? `<span class="badge badge-success">${escapeHtml(phDisplay)}</span>` : ''}
                                 </div>
+                                ${isManualMode ? `
+                                    <div class="flex items-center gap-2">
+                                        <button type="button" class="btn btn-secondary ordem-move-up" data-product-id="${p.id}" aria-label="Mover produto para cima" ${i === 0 ? 'disabled' : ''}>
+                                            <i class="fa-solid fa-arrow-up"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-secondary ordem-move-down" data-product-id="${p.id}" aria-label="Mover produto para baixo" ${i === displayProducts.length - 1 ? 'disabled' : ''}>
+                                            <i class="fa-solid fa-arrow-down"></i>
+                                        </button>
+                                    </div>
+                                ` : ''}
                                 ${respeitar ? '' : `
                                     <select class="input-box ordem-select" aria-label="Selecionar ordem do produto" data-product-id="${p.id}" ${readOnlySnapshotMode ? 'disabled' : ''}>
                                         ${orderOptions}
@@ -2126,17 +2168,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }).join('');
 
-            container.querySelectorAll('.ordem-select').forEach(select => {
-                select.addEventListener('change', (event) => {
-                    const productId = event.target.dataset.productId;
-                    const newIndex = Number(event.target.value);
+            container.querySelectorAll('.ordem-move-up, .ordem-move-down').forEach(button => {
+                button.addEventListener('click', (event) => {
+                    const productId = event.currentTarget.dataset.productId;
                     const currentIndex = products.findIndex(item => item.id === productId);
-                    if (currentIndex === -1 || newIndex === currentIndex) {
+                    if (currentIndex === -1) {
                         return;
                     }
+
+                    const direction = event.currentTarget.classList.contains('ordem-move-up') ? -1 : 1;
+                    const newIndex = currentIndex + direction;
+                    if (newIndex < 0 || newIndex >= products.length) {
+                        return;
+                    }
+
                     const movedItem = products.splice(currentIndex, 1)[0];
                     products.splice(newIndex, 0, movedItem);
                     renderOrdem();
+                    simulationDraftManager?.scheduleSave?.();
                     showToast('📦 Ordem atualizada', 'success');
                 });
             });
@@ -2632,6 +2681,32 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
+                const snapshot = existingSnapshot || {
+                    mixId,
+                    createdAt: new Date().toISOString(),
+                    versao: '1.0',
+                    identificacao: draft.identificacao,
+                    maquina: draft.maquina,
+                    agua: draft.agua ?? null,
+                    meteo: draft.meteo ?? null,
+                    ordem: draft.ordem,
+                    itens: draft.itens ?? []
+                };
+
+                const currentOrderMode = getCurrentOrderMode();
+                const orderedProductsSnapshot = getDisplayProductsByMode(currentOrderMode);
+                snapshot.orderMode = currentOrderMode;
+                snapshot.ordem = orderedProductsSnapshot;
+                snapshot.itens = draft.itens ?? products;
+
+                await saveDraft(mixId, 'reportSnapshot', snapshot);
+                await saveDraft(mixId, 'status', 'finalized');
+
+                const identificacaoSnapshot = snapshot.identificacao || {};
+                const maquinaSnapshot = snapshot.maquina || {};
+                const ordemSnapshot = Array.isArray(snapshot.ordem) ? snapshot.ordem : [];
+                const snapshotItens = Array.isArray(snapshot.itens) && snapshot.itens.length
+                    ? snapshot.itens
                 const identificacaoSnapshot = snapshotForPdf?.identificacao || {};
                 const maquinaSnapshot = snapshotForPdf?.maquina || {};
                 const ordemSnapshot = Array.isArray(snapshotForPdf?.ordem) ? snapshotForPdf.ordem : [];
@@ -2761,14 +2836,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const vazao = parseFloat(maquinaSnapshot.vazao ?? document.getElementById('eq_vazao').value) || 100;
             const tanque = parseFloat(maquinaSnapshot.tanque ?? document.getElementById('eq_tanque').value) || 2000;
             const area = parseFloat(identificacaoSnapshot.area ?? document.getElementById('id_area').value) || 10;
-            const respeitar = ordemSnapshot.length > 0 ? true : document.getElementById('respeitarHierarquia').checked;
+            const orderModeSnapshot = snapshot.orderMode || getCurrentOrderMode();
             const criterio = document.getElementById('criterioOrdenacao').value;
 
             let displayProducts = snapshotItens;
             if (ordemSnapshot.length > 0) {
                 displayProducts = ordemSnapshot;
-            } else if (respeitar) {
+            } else if (orderModeSnapshot === 'auto') {
                 displayProducts = sortProductsByHierarchy(snapshotItens, criterio);
+            } else if (orderModeSnapshot === 'fispq') {
+                displayProducts = sortProductsByFispq(snapshotItens);
             }
 
             const tableData = displayProducts.map((p, i) => [
