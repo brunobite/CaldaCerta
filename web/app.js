@@ -270,10 +270,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const badge = document.getElementById('connection-status-badge');
             if (!badge) return;
 
+            if (isUsingOfflineSessionFallback) {
+                setOperationalStatus(online ? 'restoring' : 'offline-session');
+                return;
+            }
+
             const isConnected = online && firebaseConnected !== false;
             badge.classList.toggle('connection-status-online', isConnected);
             badge.classList.toggle('connection-status-offline', !isConnected);
-            badge.textContent = isConnected ? 'Online' : 'Offline (modo campo)';
+            badge.textContent = isConnected ? 'Online' : 'Offline';
         }
 
         function initConnectionStatusBadge() {
@@ -3933,9 +3938,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function setOfflineSessionBadge(isVisible) {
-            const badge = document.getElementById('offline-session-badge');
+            const legacyBadge = document.getElementById('offline-session-badge');
+            if (legacyBadge) {
+                legacyBadge.style.display = 'none';
+            }
+
+            const badge = document.getElementById('connection-status-badge');
             if (!badge) return;
-            badge.style.display = isVisible ? 'inline-flex' : 'none';
+
+            if (isVisible) {
+                badge.classList.remove('connection-status-online');
+                badge.classList.add('connection-status-offline');
+                badge.textContent = 'Offline com sessão local';
+            }
+        }
+
+        function setOperationalStatus(status) {
+            const badge = document.getElementById('connection-status-badge');
+            if (!badge) return;
+
+            badge.classList.remove('connection-status-online', 'connection-status-offline');
+
+            if (status === 'online') {
+                badge.classList.add('connection-status-online');
+                badge.textContent = 'Online';
+                return;
+            }
+
+            badge.classList.add('connection-status-offline');
+            if (status === 'offline-session') {
+                badge.textContent = 'Offline com sessão local';
+                return;
+            }
+            if (status === 'restoring') {
+                badge.textContent = 'Sincronizando/restaurando';
+                return;
+            }
+            badge.textContent = 'Offline';
         }
 
         document.addEventListener('firebase-connection', (event) => {
@@ -4030,6 +4069,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('admin-badge-display').style.display = isUserAdmin ? 'inline-block' : 'none';
             setOfflineSessionBadge(isOfflineFallback);
             setLoginFormEnabled(true);
+            setOperationalStatus(isOfflineFallback ? 'offline-session' : (navigator.onLine ? 'online' : 'offline'));
 
             if (isOfflineFallback) {
                 const footerName = document.getElementById('user-name-footer');
@@ -4046,6 +4086,34 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (typeof loadHistory === 'function') {
                 loadHistory();
+            }
+        }
+
+        async function restoreRemoteModeAfterReconnect() {
+            if (!navigator.onLine || !isUsingOfflineSessionFallback || !currentUserData) {
+                return;
+            }
+
+            setOperationalStatus('restoring');
+
+            const firebaseUser = auth?.currentUser;
+            if (!firebaseUser) {
+                showAuthError('Conexão restaurada. Validando sessão online...');
+                return;
+            }
+
+            try {
+                await firebaseUser.getIdToken(true);
+                isUsingOfflineSessionFallback = false;
+                showMainAppForAuthenticatedUser(firebaseUser, { offlineFallback: false });
+                showToast('🌐 Conexão restaurada. Catálogo remoto reativado.', 'success');
+                syncPendingData();
+                OfflineSync.processQueue();
+                OutboxSync.processOutbox();
+            } catch (error) {
+                console.warn('Falha ao restaurar sessão remota após reconexão:', error);
+                showAuthError('Conexão voltou, mas a sessão remota ainda não foi validada.');
+                setOperationalStatus('offline-session');
             }
         }
 
@@ -4183,7 +4251,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            window.addEventListener('online', updateLoginOfflineWarning);
+            window.addEventListener('online', () => {
+                updateLoginOfflineWarning();
+                restoreRemoteModeAfterReconnect();
+            });
             window.addEventListener('offline', updateLoginOfflineWarning);
         }
 

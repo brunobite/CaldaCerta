@@ -32,6 +32,15 @@
     return database;
   }
 
+
+  function logCatalogSource(source, meta = {}) {
+    const details = Object.entries(meta)
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => `${key}=${value}`)
+      .join(' ');
+    console.info(`[productsService] catalog source: ${source}${details ? ` ${details}` : ''}`);
+  }
+
   function getCurrentUser() {
     const user = window.currentUser || (firebase && firebase.auth && firebase.auth().currentUser);
     if (!user) throw new Error('Usuário não autenticado.');
@@ -166,6 +175,7 @@
 
     const user = getCurrentUser();
     if (!navigator.onLine) {
+      logCatalogSource('local-cache', { reason: 'offline-search', uid: user.uid });
       const local = await getOfflineProducts(user.uid);
       return local.filter((produto) => {
         const hay = normalizeKey(`${produto.nomeComercial || produto.nome || ''} ${produto.empresa || ''} ${produto.tipoProduto || ''}`);
@@ -176,10 +186,23 @@
     const database = getDatabase();
 
     // 1) lê índices por palavra (catálogo + usuário)
-    const [catalogoSnaps, usuarioSnaps] = await Promise.all([
-      Promise.all(words.map((w) => database.ref(`produtos_catalogo_busca/${w}`).once('value'))),
-      Promise.all(words.map((w) => database.ref(`produtos_usuarios_busca/${user.uid}/${w}`).once('value'))),
-    ]);
+    let catalogoSnaps;
+    let usuarioSnaps;
+    try {
+      [catalogoSnaps, usuarioSnaps] = await Promise.all([
+        Promise.all(words.map((w) => database.ref(`produtos_catalogo_busca/${w}`).once('value'))),
+        Promise.all(words.map((w) => database.ref(`produtos_usuarios_busca/${user.uid}/${w}`).once('value'))),
+      ]);
+      logCatalogSource('remote', { reason: 'online-search', uid: user.uid });
+    } catch (error) {
+      console.warn('[productsService] Falha na busca remota, usando cache local:', error);
+      logCatalogSource('local-cache', { reason: 'remote-search-failed', uid: user.uid });
+      const local = await getOfflineProducts(user.uid);
+      return local.filter((produto) => {
+        const hay = normalizeKey(`${produto.nomeComercial || produto.nome || ''} ${produto.empresa || ''} ${produto.tipoProduto || ''}`);
+        return words.every((w) => hay.includes(w));
+      }).slice(0, limit);
+    }
 
     const catalogoSets = catalogoSnaps.map((s) => new Set(Object.keys(s.val() || {})));
     const usuarioSets = usuarioSnaps.map((s) => new Set(Object.keys(s.val() || {})));
@@ -258,6 +281,7 @@
     const user = getCurrentUser();
 
     if (!navigator.onLine) {
+      logCatalogSource('local-cache', { reason: 'offline-user-list', uid: user.uid });
       const local = await getOfflineProducts(user.uid);
       return local.filter((p) => p.source === 'usuario').slice(0, limit);
     }
@@ -270,6 +294,7 @@
       .once('value');
     const data = snapshot.val() || {};
     const items = Object.entries(data).map(([id, produto]) => ({ id, uid: user.uid, ...produto, source: 'usuario' }));
+    logCatalogSource('user-library', { reason: 'online-user-list', uid: user.uid, count: items.length });
     await cacheProducts(items);
     return items;
   }
@@ -278,6 +303,7 @@
     const user = getCurrentUser();
 
     if (!navigator.onLine) {
+      logCatalogSource('local-cache', { reason: 'offline-catalog-list', uid: user.uid });
       const local = await getOfflineProducts(user.uid);
       return local.filter((p) => p.source === 'catalogo').slice(0, limit);
     }
@@ -290,6 +316,7 @@
       .once('value');
     const data = snapshot.val() || {};
     const items = Object.entries(data).map(([id, produto]) => ({ id, uid: user.uid, ...produto, source: 'catalogo' }));
+    logCatalogSource('remote', { reason: 'online-catalog-list', uid: user.uid, count: items.length });
     await cacheProducts(items);
     return items;
   }
