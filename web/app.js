@@ -109,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'id_cliente', 'id_propriedade', 'id_talhao', 'id_area', 'id_data',
             'id_responsavel', 'id_cultura', 'id_objetivo', 'eq_tanque', 'eq_vazao',
             'eq_operador', 'agua_ph', 'agua_dureza', 'agua_origem', 'agua_obs',
-            'clima_lat', 'clima_lon', 'jarra_vol', 'respeitarHierarquia',
+            'clima_lat', 'clima_lon', 'jarra_vol', 'orderMode', 'respeitarHierarquia',
             'criterioOrdenacao', 'calda_ph'
         ];
 
@@ -1307,10 +1307,46 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        function sortProductsByFispq(products) {
+            return [...products].sort((a, b) => {
+                const phA = Number.isFinite(Number(a?.ph)) ? Number(a.ph) : Number.POSITIVE_INFINITY;
+                const phB = Number.isFinite(Number(b?.ph)) ? Number(b.ph) : Number.POSITIVE_INFINITY;
+                if (phA !== phB) return phA - phB;
+                return (a?.nome || '').localeCompare(b?.nome || '');
+            });
+        }
+
+        function getCurrentOrderMode() {
+            const mode = document.getElementById('orderMode')?.value;
+            if (mode === 'auto' || mode === 'manual' || mode === 'fispq') {
+                return mode;
+            }
+            return document.getElementById('respeitarHierarquia')?.checked ? 'auto' : 'manual';
+        }
+
+        function getDisplayProductsByMode(mode) {
+            const criterio = document.getElementById('criterioOrdenacao').value;
+            if (mode === 'auto') {
+                return sortProductsByHierarchy(products, criterio);
+            }
+            if (mode === 'fispq') {
+                return sortProductsByFispq(products);
+            }
+            return [...products];
+        }
+
+        function syncLegacyHierarchyFlag(mode) {
+            const legacy = document.getElementById('respeitarHierarquia');
+            if (legacy) {
+                legacy.checked = mode === 'auto';
+            }
+        }
+
         window.toggleHierarchyOptions = () => {
-            const checked = document.getElementById('respeitarHierarquia').checked;
+            const mode = getCurrentOrderMode();
+            syncLegacyHierarchyFlag(mode);
             const options = document.getElementById('hierarchyOptions');
-            options.style.display = checked ? 'block' : 'none';
+            options.style.display = mode === 'auto' ? 'block' : 'none';
             renderOrdem();
         };
 
@@ -1412,7 +1448,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 agua_observacoes: document.getElementById('agua_obs').value,
                 calda_ph: parseFloat(document.getElementById('calda_ph').value) || null,
                 jarra_volume: parseInt(document.getElementById('jarra_vol').value),
-                respeitar_hierarquia: document.getElementById('respeitarHierarquia').checked ? 1 : 0,
+                order_mode: getCurrentOrderMode(),
+                respeitar_hierarquia: getCurrentOrderMode() === 'auto' ? 1 : 0,
                 criterio_ordenacao: document.getElementById('criterioOrdenacao').value,
                 produtos: products
             };
@@ -1682,6 +1719,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('eq_vazao').value = item.vazao;
                 document.getElementById('eq_operador').value = item.operador || '';
                 document.getElementById('jarra_vol').value = item.jarra_volume || 1000;
+                const orderMode = item.order_mode || (item.respeitar_hierarquia ? 'auto' : 'manual');
+                document.getElementById('orderMode').value = orderMode;
                 document.getElementById('respeitarHierarquia').checked = !!item.respeitar_hierarquia;
                 document.getElementById('criterioOrdenacao').value = item.criterio_ordenacao || 'tipo';
 
@@ -1804,6 +1843,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('id_cultura').selectedIndex = 0;
             document.getElementById('id_objetivo').selectedIndex = 0;
             document.getElementById('res_rendimento').innerText = "0.0";
+            document.getElementById('orderMode').value = 'auto';
             document.getElementById('respeitarHierarquia').checked = true;
             navTo('2-1');
             simulationDraftManager?.saveNow?.().catch(() => {});
@@ -1981,15 +2021,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const tanque = parseFloat(document.getElementById('eq_tanque').value) || 2000;
             const area = parseFloat(document.getElementById('id_area').value) || 10;
             const container = document.getElementById('ordem-container');
-            const respeitar = document.getElementById('respeitarHierarquia').checked;
-            const criterio = document.getElementById('criterioOrdenacao').value;
+            const mode = getCurrentOrderMode();
+            const isManualMode = mode === 'manual';
 
             if (products.length === 0) {
                 container.innerHTML = '<div class="empty-state"><p class="text-slate-500">Nenhum produto adicionado</p></div>';
                 return;
             }
 
-            let displayProducts = respeitar ? sortProductsByHierarchy(products, criterio) : products;
+            const displayProducts = getDisplayProductsByMode(mode);
 
             container.innerHTML = displayProducts.map((p, i) => {
                 const doseJarra = vazao > 0 ? ((p.dose * jarra) / vazao).toFixed(2) : '0.00';
@@ -1997,9 +2037,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const volumeTotal = (p.dose * area).toFixed(2);
                 const phDisplay = p.ph ? `pH FISPQ: ${p.ph}` : '';
                 const observacao = p.observacao || '';
-                const orderOptions = displayProducts
-                    .map((_, idx) => `<option value="${idx}" ${idx === i ? 'selected' : ''}>Ordem ${idx + 1}</option>`)
-                    .join('');
 
                 return `
                     <div class="product-item ordem-card" data-id="${p.id}">
@@ -2010,11 +2047,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <span class="badge badge-accent">${escapeHtml(p.formulacao)}</span>
                                     ${phDisplay ? `<span class="badge badge-success">${escapeHtml(phDisplay)}</span>` : ''}
                                 </div>
-                                ${respeitar ? '' : `
-                                    <select class="input-box ordem-select" aria-label="Selecionar ordem do produto" data-product-id="${p.id}">
-                                        ${orderOptions}
-                                    </select>
-                                `}
+                                ${isManualMode ? `
+                                    <div class="flex items-center gap-2">
+                                        <button type="button" class="btn btn-secondary ordem-move-up" data-product-id="${p.id}" aria-label="Mover produto para cima" ${i === 0 ? 'disabled' : ''}>
+                                            <i class="fa-solid fa-arrow-up"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-secondary ordem-move-down" data-product-id="${p.id}" aria-label="Mover produto para baixo" ${i === displayProducts.length - 1 ? 'disabled' : ''}>
+                                            <i class="fa-solid fa-arrow-down"></i>
+                                        </button>
+                                    </div>
+                                ` : ''}
                             </div>
                             <div class="ordem-card-content">
                                 <div class="ordem-card-info">
@@ -2041,17 +2083,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }).join('');
 
-            container.querySelectorAll('.ordem-select').forEach(select => {
-                select.addEventListener('change', (event) => {
-                    const productId = event.target.dataset.productId;
-                    const newIndex = Number(event.target.value);
+            container.querySelectorAll('.ordem-move-up, .ordem-move-down').forEach(button => {
+                button.addEventListener('click', (event) => {
+                    const productId = event.currentTarget.dataset.productId;
                     const currentIndex = products.findIndex(item => item.id === productId);
-                    if (currentIndex === -1 || newIndex === currentIndex) {
+                    if (currentIndex === -1) {
                         return;
                     }
+
+                    const direction = event.currentTarget.classList.contains('ordem-move-up') ? -1 : 1;
+                    const newIndex = currentIndex + direction;
+                    if (newIndex < 0 || newIndex >= products.length) {
+                        return;
+                    }
+
                     const movedItem = products.splice(currentIndex, 1)[0];
                     products.splice(newIndex, 0, movedItem);
                     renderOrdem();
+                    simulationDraftManager?.scheduleSave?.();
                     showToast('📦 Ordem atualizada', 'success');
                 });
             });
@@ -2472,6 +2521,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     itens: draft.itens ?? []
                 };
 
+                const currentOrderMode = getCurrentOrderMode();
+                const orderedProductsSnapshot = getDisplayProductsByMode(currentOrderMode);
+                snapshot.orderMode = currentOrderMode;
+                snapshot.ordem = orderedProductsSnapshot;
+                snapshot.itens = draft.itens ?? products;
+
                 await saveDraft(mixId, 'reportSnapshot', snapshot);
                 await saveDraft(mixId, 'status', 'finalized');
 
@@ -2597,14 +2652,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const vazao = parseFloat(maquinaSnapshot.vazao ?? document.getElementById('eq_vazao').value) || 100;
             const tanque = parseFloat(maquinaSnapshot.tanque ?? document.getElementById('eq_tanque').value) || 2000;
             const area = parseFloat(identificacaoSnapshot.area ?? document.getElementById('id_area').value) || 10;
-            const respeitar = ordemSnapshot.length > 0 ? true : document.getElementById('respeitarHierarquia').checked;
+            const orderModeSnapshot = snapshot.orderMode || getCurrentOrderMode();
             const criterio = document.getElementById('criterioOrdenacao').value;
 
             let displayProducts = snapshotItens;
             if (ordemSnapshot.length > 0) {
                 displayProducts = ordemSnapshot;
-            } else if (respeitar) {
+            } else if (orderModeSnapshot === 'auto') {
                 displayProducts = sortProductsByHierarchy(snapshotItens, criterio);
+            } else if (orderModeSnapshot === 'fispq') {
+                displayProducts = sortProductsByFispq(snapshotItens);
             }
 
             const tableData = displayProducts.map((p, i) => [
