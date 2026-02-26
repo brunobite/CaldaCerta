@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let climateData = null;
         let currentEditingSimulation = null;
         let simulationDraftManager = null;
+        let readOnlySnapshotMode = false;
 
         const DRAFT_FIELD_IDS = [
             'id_cliente', 'id_propriedade', 'id_talhao', 'id_area', 'id_data',
@@ -244,6 +245,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof renderOrdem === 'function') {
                 renderOrdem();
             }
+        }
+
+        async function loadMixDraft(mixId) {
+            if (!window.OfflineDB?.dbGet) return null;
+            const draftRecord = await window.OfflineDB.dbGet('mix_drafts_local', mixId);
+            return draftRecord?.payload || null;
+        }
+
+        async function saveMixDraftSection(mixId, sectionKey, data) {
+            if (!window.OfflineDB?.dbGet || !window.OfflineDB?.dbPut) return null;
+            const current = await window.OfflineDB.dbGet('mix_drafts_local', mixId);
+            const payload = { ...(current?.payload || {}) };
+            payload[sectionKey] = data;
+            await window.OfflineDB.dbPut('mix_drafts_local', {
+                id: mixId,
+                updatedAt: new Date().toISOString(),
+                payload
+            });
+            return payload;
         }
 
         function updateConnectionStatusBadge(online, firebaseConnected) {
@@ -1557,6 +1577,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         window.saveSimulation = async () => {
+            if (readOnlySnapshotMode) {
+                showToast('🔒 Snapshot finalizado não pode ser editado.', 'warning');
+                return;
+            }
             if (!_validateSimulationFields()) return;
 
             const btn = document.getElementById('btn-save-cloud');
@@ -1664,6 +1688,35 @@ document.addEventListener('DOMContentLoaded', () => {
             return fetchJson(url);
         }
 
+        function setSnapshotReadOnlyMode(enabled) {
+            readOnlySnapshotMode = !!enabled;
+            const lockedIds = [
+                'id_cliente', 'id_propriedade', 'id_talhao', 'id_area', 'id_data',
+                'id_responsavel', 'id_cultura', 'id_objetivo', 'eq_tanque', 'eq_vazao',
+                'eq_operador', 'agua_ph', 'agua_dureza', 'agua_origem', 'agua_obs',
+                'jarra_vol', 'respeitarHierarquia', 'criterioOrdenacao', 'calda_ph',
+                'p_nome', 'p_marca', 'p_dose', 'p_formulacao', 'p_tipo', 'p_ph', 'p_url_fispq'
+            ];
+
+            lockedIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.disabled = !!enabled;
+            });
+
+            const btnSave = document.getElementById('btn-save-cloud');
+            if (btnSave) {
+                btnSave.disabled = !!enabled;
+                if (enabled) {
+                    btnSave.classList.add('opacity-50');
+                    btnSave.innerHTML = '<i class="fa-solid fa-lock"></i> Snapshot bloqueado';
+                } else {
+                    btnSave.classList.remove('opacity-50');
+                    btnSave.innerHTML = '<i class="fa-solid fa-save text-xl"></i> <span class="font-bold">Salvar</span>';
+                }
+            }
+        }
+
         window.viewSimulation = async (id, uidOverride = '') => {
             try {
                 if (!currentUserData) {
@@ -1673,16 +1726,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const ownerUid = uidOverride || currentUserData.uid;
                 let item = null;
+                let reportSnapshot = null;
 
                 // Firebase é a fonte primária
                 if (navigator.onLine) {
                     const simRef = db.ref('simulacoes/' + ownerUid + '/' + id);
                     const snapshot = await simRef.once('value');
                     item = snapshot.val();
+
+                    const reportSnapshotRef = db.ref(`usuarios/${ownerUid}/misturas/${id}/reportSnapshot`);
+                    const reportSnapshotData = await reportSnapshotRef.once('value');
+                    reportSnapshot = reportSnapshotData.val();
                 }
 
                 if (!item && offlineDb) {
                     item = await offlineDb.dbGet(offlineDb.STORES.SIMULATIONS, id);
+                }
+
+                if (!reportSnapshot && item?.reportSnapshot) {
+                    reportSnapshot = item.reportSnapshot;
                 }
 
                 // Fallback: estrutura legada
@@ -1751,11 +1813,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     source: 'firebase'
                 };
 
+                climateData = reportSnapshot?.meteo?.data || null;
+                setSnapshotReadOnlyMode(!!reportSnapshot);
+
                 renderProductList();
                 maybeWarnProdutoTipoMissing(products);
                 calcRendimento();
                 toggleHierarchyOptions();
                 navTo('2-6');
+                if (reportSnapshot) {
+                    showToast('🔒 Snapshot finalizado carregado. Apenas atualização de clima e novo PDF são permitidos.', 'warning');
+                }
             } catch (e) {
                 console.error('Erro ao carregar simulação:', e);
                 showToast('❌ Erro ao carregar simulação', 'error');
@@ -1784,9 +1852,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (steps[currentStepIdx] === '2-6') {
                 const btnSave = document.getElementById('btn-save-cloud');
                 if (btnSave) {
-                    btnSave.disabled = false;
-                    btnSave.innerHTML = '<i class="fa-solid fa-save text-xl"></i> <span class="font-bold">Salvar</span>';
-                    btnSave.classList.remove('opacity-50');
+                    btnSave.disabled = !!readOnlySnapshotMode;
+                    if (readOnlySnapshotMode) {
+                        btnSave.innerHTML = '<i class="fa-solid fa-lock"></i> Snapshot bloqueado';
+                        btnSave.classList.add('opacity-50');
+                    } else {
+                        btnSave.innerHTML = '<i class="fa-solid fa-save text-xl"></i> <span class="font-bold">Salvar</span>';
+                        btnSave.classList.remove('opacity-50');
+                    }
                 }
                 renderOrdem();
             }
@@ -1834,6 +1907,8 @@ document.addEventListener('DOMContentLoaded', () => {
         window.startNewSimulation = () => {
             products = [];
             currentEditingSimulation = null;
+            climateData = null;
+            setSnapshotReadOnlyMode(false);
             renderProductList();
             document.querySelectorAll('input').forEach(i => {
                 if (i.type !== 'date' && i.type !== 'checkbox') i.value = "";
@@ -1852,6 +1927,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Produtos
         window.addProduto = async () => {
+            if (readOnlySnapshotMode) return;
             const nome = document.getElementById('p_nome').value;
             const dose = parseFloat(document.getElementById('p_dose').value);
             const formulacao = document.getElementById('p_formulacao').value;
@@ -1947,6 +2023,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         window.removeProduct = (id) => {
+            if (readOnlySnapshotMode) return;
             products = products.filter(p => p.id !== id);
             renderProductList();
             showToast('🗑️ Produto removido', 'success');
@@ -2009,6 +2086,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Atualizar observação do produto
         window.updateProductObservation = (productId, observacao) => {
+            if (readOnlySnapshotMode) return;
             const product = products.find(p => p.id === productId);
             if (product) {
                 product.observacao = observacao;
@@ -2058,6 +2136,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                         </button>
                                     </div>
                                 ` : ''}
+                                ${respeitar ? '' : `
+                                    <select class="input-box ordem-select" aria-label="Selecionar ordem do produto" data-product-id="${p.id}" ${readOnlySnapshotMode ? 'disabled' : ''}>
+                                        ${orderOptions}
+                                    </select>
+                                `}
                             </div>
                             <div class="ordem-card-content">
                                 <div class="ordem-card-info">
@@ -2069,6 +2152,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         class="observacao-input"
                                         placeholder="Observações do produto..."
                                         data-product-id="${p.id}"
+                                        ${readOnlySnapshotMode ? 'disabled' : ''}
                                         oninput="updateProductObservation('${p.id}', this.value)"
                                     >${observacao}</textarea>
                                 </div>
@@ -2477,6 +2561,93 @@ document.addEventListener('DOMContentLoaded', () => {
             return { liberado, atencao, naoAplicar, summary, stats: { libCount, attCount, bloqCount, pctLib, pctAtt, pctBloq } };
         }
 
+        function hasValidatedMeteoData(meteo) {
+            return meteo?.status === 'validated'
+                && Array.isArray(meteo?.data?.deltaT)
+                && meteo.data.deltaT.length > 0;
+        }
+
+        function buildMeteoSnapshot() {
+            if (climateData?.deltaT?.length) {
+                return {
+                    status: 'validated',
+                    source: climateData.source || 'open-meteo',
+                    updatedAt: new Date().toISOString(),
+                    data: {
+                        labels: [...(climateData.labels || [])],
+                        temperatures: [...(climateData.temperatures || [])],
+                        humidity: [...(climateData.humidity || [])],
+                        winds: [...(climateData.winds || [])],
+                        precipitation: [...(climateData.precipitation || [])],
+                        deltaT: [...(climateData.deltaT || [])]
+                    }
+                };
+            }
+
+            return {
+                status: 'pending',
+                source: navigator.onLine ? 'not_collected' : 'offline_unavailable',
+                updatedAt: null,
+                pendingReason: 'Informações climáticas indisponíveis no momento da geração offline.',
+                data: null
+            };
+        }
+
+        function buildReportSnapshot(mixId) {
+            const orderedProducts = [...products];
+            const meteo = buildMeteoSnapshot();
+
+            return {
+                mixId,
+                createdAt: new Date().toISOString(),
+                versao: '1.0',
+                identificacao: {
+                    cliente: document.getElementById('id_cliente').value,
+                    propriedade: document.getElementById('id_propriedade').value,
+                    talhao: document.getElementById('id_talhao').value,
+                    data_aplicacao: document.getElementById('id_data').value,
+                    cultura: document.getElementById('id_cultura').value,
+                    area: parseFloat(document.getElementById('id_area').value) || 0,
+                    responsavel: document.getElementById('id_responsavel').value,
+                    objetivo: document.getElementById('id_objetivo').value
+                },
+                maquina: {
+                    tanque: parseFloat(document.getElementById('eq_tanque').value) || 0,
+                    vazao: parseFloat(document.getElementById('eq_vazao').value) || 0,
+                    operador: document.getElementById('eq_operador').value,
+                    jarraVolume: parseInt(document.getElementById('jarra_vol').value, 10) || 1000,
+                    respeitarHierarquia: !!document.getElementById('respeitarHierarquia').checked,
+                    criterioOrdenacao: document.getElementById('criterioOrdenacao').value
+                },
+                agua: {
+                    ph: parseFloat(document.getElementById('agua_ph').value) || null,
+                    dureza: parseFloat(document.getElementById('agua_dureza').value) || null,
+                    origem: document.getElementById('agua_origem').value,
+                    observacoes: document.getElementById('agua_obs').value,
+                    caldaPh: parseFloat(document.getElementById('calda_ph').value) || null
+                },
+                meteoStatus: meteo.status,
+                meteoSource: meteo.source,
+                meteo,
+                ordem: orderedProducts,
+                itens: orderedProducts
+            };
+        }
+
+        function mergeSnapshotWithMeteoUpdate(snapshot, meteoUpdate) {
+            if (!snapshot) return null;
+            if (!hasValidatedMeteoData(meteoUpdate)) return snapshot;
+
+            return {
+                ...snapshot,
+                meteoStatus: 'validated',
+                meteoSource: meteoUpdate.source,
+                meteo: meteoUpdate,
+                meteoUpdatedAt: meteoUpdate.updatedAt,
+                basedOnSnapshotCreatedAt: snapshot.createdAt
+            };
+        }
+
         // PDF + Salvamento unificado
         window.generatePDF = async () => {
             const btnGeneratePdf = document.querySelector('button[onclick="generatePDF()"]');
@@ -2488,27 +2659,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 syncProductObservationsFromDom();
 
                 const mixId = currentEditingSimulation?.id || 'lastDraft';
-                const loadDraft = window.loadDraft || (async (id) => {
-                    if (!window.OfflineDB?.dbGet) return null;
-                    const draftRecord = await window.OfflineDB.dbGet('mix_drafts_local', id);
-                    return draftRecord?.payload || null;
-                });
-                const saveDraft = window.saveDraft || (async (id, sectionKey, data) => {
-                    if (!window.OfflineDB?.dbGet || !window.OfflineDB?.dbPut) return null;
-                    const current = await window.OfflineDB.dbGet('mix_drafts_local', id);
-                    const payload = { ...(current?.payload || {}) };
-                    payload[sectionKey] = data;
-                    await window.OfflineDB.dbPut('mix_drafts_local', {
-                        id,
-                        updatedAt: new Date().toISOString(),
-                        payload
-                    });
-                    return payload;
-                });
 
-                const rawDraft = await loadDraft(mixId);
+                const rawDraft = await loadMixDraft(mixId);
                 const draft = rawDraft?.sections ? rawDraft.sections : (rawDraft || {});
                 const existingSnapshot = draft.reportSnapshot || null;
+                const snapshot = existingSnapshot || buildReportSnapshot(mixId);
+                const meteoUpdate = draft.reportMeteoUpdate || null;
+                const snapshotForPdf = mergeSnapshotWithMeteoUpdate(snapshot, meteoUpdate);
+
+                await saveMixDraftSection(mixId, 'reportSnapshot', snapshot);
+                await saveMixDraftSection(mixId, 'status', 'finalized');
+                if (hasValidatedMeteoData(meteoUpdate)) {
+                    const updateHistory = Array.isArray(draft.reportUpdates) ? draft.reportUpdates : [];
+                    const alreadyTracked = updateHistory.some((entry) => entry?.type === 'meteo_update' && entry?.updatedAt === meteoUpdate.updatedAt);
+                    if (!alreadyTracked) {
+                        await saveMixDraftSection(mixId, 'reportUpdates', [...updateHistory, {
+                            type: 'meteo_update',
+                            updatedAt: meteoUpdate.updatedAt,
+                            source: meteoUpdate.source
+                        }]);
+                    }
+                }
 
                 const snapshot = existingSnapshot || {
                     mixId,
@@ -2536,12 +2707,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ordemSnapshot = Array.isArray(snapshot.ordem) ? snapshot.ordem : [];
                 const snapshotItens = Array.isArray(snapshot.itens) && snapshot.itens.length
                     ? snapshot.itens
+                const identificacaoSnapshot = snapshotForPdf?.identificacao || {};
+                const maquinaSnapshot = snapshotForPdf?.maquina || {};
+                const ordemSnapshot = Array.isArray(snapshotForPdf?.ordem) ? snapshotForPdf.ordem : [];
+                const snapshotItens = Array.isArray(snapshotForPdf?.itens) && snapshotForPdf.itens.length
+                    ? snapshotForPdf.itens
                     : products;
+                const snapshotMeteo = snapshotForPdf?.meteo || null;
+                const meteoValidated = hasValidatedMeteoData(snapshotMeteo);
+                const pdfClimateData = meteoValidated ? snapshotMeteo.data : null;
 
                 // Salvar automaticamente no Firebase ao gerar PDF
                 if (currentUserData && products.length > 0) {
                     try {
                         const payload = _buildSimulationPayload();
+                        payload.reportSnapshot = snapshot;
+                        if (hasValidatedMeteoData(meteoUpdate)) {
+                            payload.reportMeteoUpdate = meteoUpdate;
+                        }
                         await _savePayloadToFirebase(payload);
                         console.log('✅ Simulação salva automaticamente ao gerar PDF');
 
@@ -2786,15 +2969,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const chartDeltaT = document.getElementById('chartDeltaT');
             const chartWidth = pageWidth - 30;
             const chartHeightDelta = 100;
-            if (chartDeltaT) {
+            if (meteoValidated && chartDeltaT) {
                 const imgDeltaT = chartDeltaT.toDataURL('image/png');
                 doc.addImage(imgDeltaT, 'PNG', 15, y + 8, chartWidth, chartHeightDelta);
+            } else {
+                doc.setFillColor(248, 250, 252);
+                doc.roundedRect(15, y + 8, chartWidth, 24, 2, 2, 'F');
+                doc.setTextColor(71, 85, 105);
+                doc.setFontSize(8);
+                doc.text('Informações climáticas indisponíveis no momento da geração offline.', 20, y + 18);
+                doc.text('Atualize os dados climáticos ao retomar a conectividade para emitir versão completa.', 20, y + 24);
+                doc.setTextColor(0, 0, 0);
             }
 
             y = y + chartHeightDelta + 16;
             doc.setFontSize(8);
             doc.setFont(undefined, 'normal');
-            const windowMessage = buildBestApplicationWindows(climateData?.deltaT, climateData?.labels);
+            const windowMessage = meteoValidated
+                ? buildBestApplicationWindows(pdfClimateData?.deltaT, pdfClimateData?.labels)
+                : 'Sem janela climática validada no snapshot.';
             const textWidth = pageWidth - 30;
 
             doc.setFillColor(240, 253, 244);
@@ -2810,7 +3003,9 @@ document.addEventListener('DOMContentLoaded', () => {
             doc.setFont(undefined, 'normal');
             doc.setFontSize(7);
             doc.text(windowMessage, 20, y + 10, { maxWidth: textWidth - 10 });
-            const windMessage = buildWindSummary(climateData?.winds);
+            const windMessage = meteoValidated
+                ? buildWindSummary(pdfClimateData?.winds)
+                : 'Dados de vento pendentes de atualização';
             doc.text(`Ventos: ${windMessage}`, 20, y + 16, { maxWidth: textWidth - 10 });
             doc.setTextColor(0, 0, 0);
 
@@ -2838,9 +3033,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const chartClima = document.getElementById('chartClima');
             const chartHeightClima = 75;
-            if (chartClima) {
+            if (meteoValidated && chartClima) {
                 const imgClima = chartClima.toDataURL('image/png');
                 doc.addImage(imgClima, 'PNG', 15, y + 8, chartWidth, chartHeightClima);
+            } else {
+                doc.setFillColor(248, 250, 252);
+                doc.roundedRect(15, y + 8, chartWidth, 18, 2, 2, 'F');
+                doc.setTextColor(71, 85, 105);
+                doc.setFontSize(8);
+                doc.text('Seção climática sem dados validados no momento da geração.', 20, y + 18);
+                doc.setTextColor(0, 0, 0);
             }
 
             y = y + chartHeightClima + 16;
@@ -2854,10 +3056,18 @@ document.addEventListener('DOMContentLoaded', () => {
             doc.text('Análise baseada em Delta T, velocidade do vento, umidade, temperatura e precipitação', 15, y + 5);
             doc.setTextColor(0, 0, 0);
 
-            const analysis = buildAITechnicalAnalysis(
-                climateData?.deltaT, climateData?.winds, climateData?.precipitation,
-                climateData?.humidity, climateData?.temperatures, climateData?.labels
-            );
+            const analysis = meteoValidated
+                ? buildAITechnicalAnalysis(
+                    pdfClimateData?.deltaT, pdfClimateData?.winds, pdfClimateData?.precipitation,
+                    pdfClimateData?.humidity, pdfClimateData?.temperatures, pdfClimateData?.labels
+                )
+                : {
+                    liberado: [],
+                    atencao: [],
+                    naoAplicar: [],
+                    summary: 'Análise técnica indisponível até a atualização de meteorologia validada online.',
+                    stats: null
+                };
 
             y += 10;
 
@@ -3004,7 +3214,10 @@ document.addEventListener('DOMContentLoaded', () => {
             doc.setFontSize(6);
             doc.setTextColor(130, 130, 130);
             doc.text('Referência técnica: Delta T ideal 2–8°C | Cautela 8–10°C | Evitar >10°C | Inversão térmica <2°C | Vento ideal 3–10 km/h', 15, pageHeight - 8);
-            doc.text('Análise gerada automaticamente com base nos dados meteorológicos. Consulte um engenheiro agrônomo para decisões finais.', 15, pageHeight - 4);
+            const footerNote = meteoValidated
+                ? 'Análise gerada automaticamente com base nos dados meteorológicos. Consulte um engenheiro agrônomo para decisões finais.'
+                : 'PDF emitido sem meteorologia validada. Atualize o clima online para gerar versão completa.';
+            doc.text(footerNote, 15, pageHeight - 4);
             doc.setTextColor(0, 0, 0);
 
             doc.save(`CaldaCerta_${identificacaoSnapshot.cliente || document.getElementById('id_cliente').value}_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -3563,10 +3776,39 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 climateData = series;
+
+                let meteoUpdateSaved = false;
+                if (currentEditingSimulation?.id) {
+                    const mixId = currentEditingSimulation.id;
+                    const draftPayload = await loadMixDraft(mixId);
+                    const draft = draftPayload?.sections ? draftPayload.sections : (draftPayload || {});
+                    if (draft.reportSnapshot) {
+                        const meteoUpdate = {
+                            status: 'validated',
+                            source: series.source || 'open-meteo',
+                            updatedAt: new Date().toISOString(),
+                            data: {
+                                labels: [...(series.labels || [])],
+                                temperatures: [...(series.temperatures || [])],
+                                humidity: [...(series.humidity || [])],
+                                winds: [...(series.winds || [])],
+                                precipitation: [...(series.precipitation || [])],
+                                deltaT: [...(series.deltaT || [])]
+                            }
+                        };
+
+                        await saveMixDraftSection(mixId, 'reportMeteoUpdate', meteoUpdate);
+                        meteoUpdateSaved = true;
+                        showToast('✅ Clima validado. Gere um novo PDF para versão completa.', 'success');
+                    }
+                }
+
                 initCharts();
                 renderClimateTables();
                 checkClimateConditions(series.deltaT);
-                showToast('✅ Clima atualizado via Open-Meteo.', 'success');
+                if (!meteoUpdateSaved) {
+                    showToast('✅ Clima atualizado via Open-Meteo.', 'success');
+                }
             } catch (error) {
                 console.error(error);
                 const message = error?.userMessage || '❌ Erro ao atualizar clima. Tente novamente.';
