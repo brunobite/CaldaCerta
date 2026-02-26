@@ -1,4 +1,6 @@
-const CACHE_NAME = 'calda-certa-v3';
+// ATENÇÃO: Incrementar CACHE_VERSION a cada deploy, junto com BUILD_NUMBER em app.js
+const CACHE_VERSION = 4; // ← INCREMENTAR A CADA DEPLOY
+const CACHE_NAME = `calda-certa-v${CACHE_VERSION}`;
 const APP_SHELL = '/index.html';
 
 const ASSETS_TO_CACHE = [

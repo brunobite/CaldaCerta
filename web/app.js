@@ -2,6 +2,19 @@
 // CaldaCerta Pro - Aplicação Principal
 // Firebase é inicializado em firebase-config.js
 // ============================================
+const APP_VERSION = 'v1.2.1';
+const BUILD_NUMBER = 1; // ← INCREMENTAR A CADA DEPLOY
+const APP_FULL_VERSION = `${APP_VERSION}-build${BUILD_NUMBER}`;
+console.log(`🌿 CaldaCerta ${APP_FULL_VERSION} iniciando...`);
+
+document.addEventListener('DOMContentLoaded', () => {
+    const versionText = APP_FULL_VERSION;
+    const loginVersionEl = document.getElementById('login-version-display');
+    if (loginVersionEl) loginVersionEl.textContent = versionText;
+    const appVersionEl = document.getElementById('app-version-display');
+    if (appVersionEl) appVersionEl.textContent = versionText;
+});
+
 (function() {
     'use strict';
 
@@ -3613,16 +3626,17 @@
         }
 
         function updateLoginOfflineWarning() {
-            if (!authResolvedOnce || currentUserData) {
+            if (currentUserData) {
                 return;
             }
-
             if (!navigator.onLine) {
+                if (!authResolvedOnce) {
+                    return; // Aguardar o bootstrap terminar antes de interferir
+                }
                 setLoginFormEnabled(false);
                 showAuthError('Sem conexão. Entre uma vez online para habilitar o modo offline');
                 return;
             }
-
             setLoginFormEnabled(true);
             hideAuthError();
         }
@@ -3812,7 +3826,8 @@
         // LISTENER DE AUTENTICAÇÃO
         // ========================================
         setupAuthUiBindings();
-        setLoginFormEnabled(false);
+        const _hasSavedSession = !!readOfflineSession();
+        setLoginFormEnabled(_hasSavedSession);
         showAuthError('Verificando sessão...');
 
         if (!auth || typeof auth.onAuthStateChanged !== 'function') {
@@ -3835,12 +3850,12 @@
             }
 
             authBootstrapTimedOut = true;
-            console.warn('Timeout de autenticação: onAuthStateChanged não respondeu em 2000ms');
+            console.warn('Timeout de autenticação: onAuthStateChanged não respondeu em 5000ms');
             if (!fallbackToOfflineSession()) {
                 showAuthError('Falha ao verificar sessão (timeout). Verifique o carregamento do Firebase SDK e tente novamente.');
                 setLoginFormEnabled(navigator.onLine);
             }
-        }, 2000);
+        }, 5000);
 
         auth.onAuthStateChanged(async (user) => {
             clearTimeout(authBootstrapTimeout);
@@ -3880,7 +3895,22 @@
                         OutboxSync.processOutbox();
                     }
                 } catch (error) {
-                    console.error('Erro:', error);
+                    console.error('Erro ao carregar dados do usuário:', error);
+                    // CORREÇÃO OFFLINE: Firebase Auth restaurou o usuário do cache local,
+                    // mas db.ref().once() falhou pois não há internet.
+                    // Nesse caso, abrir o app com sessão offline em vez de travar na tela de login.
+                    if (!navigator.onLine) {
+                        const offlineSession = readOfflineSession();
+                        const displayName = offlineSession?.displayName || user.displayName || user.email;
+                        showMainAppForAuthenticatedUser(
+                            { uid: user.uid, email: user.email, displayName },
+                            { offlineFallback: true, displayName }
+                        );
+                        showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
+                    } else {
+                        showMainAppForAuthenticatedUser(user);
+                        showToast('⚠️ Erro ao carregar perfil do usuário. Tente recarregar.', 'warning');
+                    }
                 }
             } else {
                 currentUserData = null;
