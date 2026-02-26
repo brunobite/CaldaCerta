@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Histórico de Misturas - Calda Certa</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/navbar-clean.css" />
+</head>
+<body>
+  <div id="main-app">
+    <nav>
+      <div class="nav-container">
+        <h1 class="logo">
+          <span class="brand-logo" aria-label="CaldaCerta">
+            <img src="/icons/logo-wordmark.png" alt="CaldaCerta" class="brand-mark-img brand-mark-nav">
+          </span>
+        </h1>
+        <div class="header-right">
+          <span id="sync-status-icon" aria-live="polite" title="Verificando sincronização" style="font-size: 1.1rem; font-weight: 700;">⏳</span>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container" style="padding-top: 2rem; padding-bottom: 2rem;">
+      <section>
+        <div class="py-16 text-center" style="padding-top: 2rem; padding-bottom: 1.5rem;">
+          <h2 class="text-4xl font-black text-slate-900 mb-2">HISTÓRICO DE MISTURAS</h2>
+        </div>
+
+        <div id="historico-empty" class="card" style="display:none; text-align:center; padding:1.5rem;">
+          Nenhuma mistura registrada ainda.
+        </div>
+
+        <div id="historico-lista" class="grid gap-4"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    function openDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open('calda_certa', 4);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function getAll(storeName) {
+      const localDb = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = localDb.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function countFromIndex(storeName, indexName, value) {
+      const localDb = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = localDb.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const index = store.index(indexName);
+        const req = index.count(value);
+        req.onsuccess = () => resolve(req.result || 0);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function updateSyncIndicator() {
+      const icon = document.getElementById('sync-status-icon');
+      if (!icon) return;
+
+      let pending = 0;
+      try {
+        pending = await countFromIndex('outbox_local', 'status', 'pending');
+      } catch (_) {
+        pending = 0;
+      }
+
+      if (!navigator.onLine) {
+        icon.textContent = '✗';
+        icon.style.color = '#B71C1C';
+        icon.title = 'Sem internet';
+      } else if (pending > 0) {
+        icon.textContent = '⏳';
+        icon.style.color = '#E65100';
+        icon.title = `${pending} pendentes`;
+      } else {
+        icon.textContent = '☁';
+        icon.style.color = '#2E7D32';
+        icon.title = 'Sincronizado';
+      }
+    }
+
+    function buildCard(mix) {
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.style.padding = '1rem';
+
+      const cliente = mix?.clienteNome || 'Cliente não informado';
+      const data = mix?.dataAplicacao || 'Data não informada';
+      const kind = mix?.kind || 'Sem tipo';
+      const status = mix?.status || 'Sem status';
+      const mixId = mix?.mixId || '';
+
+      card.innerHTML = `
+        <div class="flex justify-between items-center" style="gap: 0.75rem; flex-wrap: wrap;">
+          <div>
+            <h3 style="font-size:1rem; font-weight:700; margin-bottom:0.35rem; color:var(--text);">${cliente}</h3>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin:0.2rem 0;">Data: ${data}</p>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin:0.2rem 0;">Tipo: ${kind}</p>
+            <p style="font-size:0.9rem; color:var(--text-muted); margin:0.2rem 0;">Status: ${status}</p>
+          </div>
+          <a href="/historico/detalhe.html?mixId=${encodeURIComponent(mixId)}" style="color:var(--primary); font-weight:600; text-decoration:none; white-space:nowrap;">Ver detalhes →</a>
+        </div>
+      `;
+
+      return card;
+    }
+
+    async function renderHistorico() {
+      const lista = document.getElementById('historico-lista');
+      const empty = document.getElementById('historico-empty');
+
+      try {
+        const misturas = await getAll('mix_index_local');
+        misturas.sort((a, b) => (b.dataAplicacao || '').localeCompare(a.dataAplicacao || ''));
+
+        if (!misturas.length) {
+          empty.style.display = 'block';
+          lista.innerHTML = '';
+          return;
+        }
+
+        empty.style.display = 'none';
+        lista.innerHTML = '';
+        misturas.forEach((mistura) => {
+          lista.appendChild(buildCard(mistura));
+        });
+      } catch (_) {
+        empty.style.display = 'block';
+        empty.textContent = 'Nenhuma mistura registrada ainda.';
+        lista.innerHTML = '';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      renderHistorico();
+      updateSyncIndicator();
+      setInterval(updateSyncIndicator, 5000);
+      window.addEventListener('online', updateSyncIndicator);
+      window.addEventListener('offline', updateSyncIndicator);
+    });
+  </script>
+</body>
+</html>
