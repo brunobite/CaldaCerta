@@ -836,6 +836,27 @@
                 });
             },
 
+            async countPendingItems() {
+                const localDb = await this._openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = localDb.transaction(this.STORE_NAME, 'readonly');
+                    const store = tx.objectStore(this.STORE_NAME);
+                    const index = store.indexNames.contains('status') ? store.index('status') : null;
+                    const req = index ? index.count('pending') : store.getAll();
+
+                    req.onsuccess = () => {
+                        if (index) {
+                            resolve(req.result || 0);
+                            return;
+                        }
+
+                        const allItems = req.result || [];
+                        resolve(allItems.filter((item) => item.status === 'pending').length);
+                    };
+                    req.onerror = () => reject(req.error);
+                });
+            },
+
             async sendToFirebase(operationType, payload) {
                 if (!payload?.uid || !payload?.mixId) {
                     throw new Error('Payload inválido para sincronização');
@@ -861,10 +882,16 @@
             },
 
             async processOutbox() {
-                if (!navigator.onLine) return 0;
+                if (!navigator.onLine) {
+                    document.dispatchEvent(new CustomEvent('outbox-processed'));
+                    return 0;
+                }
 
                 const pending = await this._getPendingItems();
-                if (!pending.length) return 0;
+                if (!pending.length) {
+                    document.dispatchEvent(new CustomEvent('outbox-processed'));
+                    return 0;
+                }
 
                 const localDb = await this._openDB();
                 let doneCount = 0;
@@ -891,9 +918,44 @@
                     }
                 }
 
+                document.dispatchEvent(new CustomEvent('outbox-processed'));
                 return doneCount;
             }
         };
+
+        async function updateSyncIndicator() {
+            const icon = document.getElementById('sync-status-icon');
+            if (!icon) return;
+
+            let pending = 0;
+            try {
+                pending = await OutboxSync.countPendingItems();
+            } catch (_) {
+                pending = 0;
+            }
+
+            if (!navigator.onLine) {
+                icon.textContent = '✗';
+                icon.style.color = '#B71C1C';
+                icon.title = 'Sem internet';
+            } else if (pending > 0) {
+                icon.textContent = '⏳';
+                icon.style.color = '#E65100';
+                icon.title = `${pending} pendentes`;
+            } else {
+                icon.textContent = '☁';
+                icon.style.color = '#2E7D32';
+                icon.title = 'Sincronizado';
+            }
+        }
+
+        function initSyncIndicator() {
+            updateSyncIndicator();
+            setInterval(updateSyncIndicator, 5000);
+            window.addEventListener('online', updateSyncIndicator);
+            window.addEventListener('offline', updateSyncIndicator);
+            document.addEventListener('outbox-processed', updateSyncIndicator);
+        }
 
         async function enqueueSimulationOutbox(mixId, payload) {
             if (!currentUserData?.uid || !mixId) return;
@@ -3463,6 +3525,7 @@
             }
 
             initConnectionStatusBadge();
+            initSyncIndicator();
             initDraftAutosave();
 
             const latField = document.getElementById('clima_lat');
