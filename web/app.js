@@ -3898,6 +3898,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let authResolvedOnce = false;
         let authBootstrapTimedOut = false;
         let isUsingOfflineSessionFallback = false;
+        let skipOfflineFallbackUntilNextOnlineAuth = false;
         let lastLoginButtonLabel = '<i class="fas fa-sign-in-alt"></i> Entrar';
         const OFFLINE_SESSION_KEY = 'offlineSession';
 
@@ -4049,6 +4050,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function fallbackToOfflineSession() {
+            if (skipOfflineFallbackUntilNextOnlineAuth) {
+                return false;
+            }
+
+            if (navigator.onLine) {
+                return false;
+            }
+
             const offlineSession = readOfflineSession();
             if (!offlineSession) {
                 return false;
@@ -4087,6 +4096,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Salvar sessão offline imediatamente após login bem-sucedido
                 // não depender apenas do onAuthStateChanged para isso
                 if (credential?.user) {
+                    skipOfflineFallbackUntilNextOnlineAuth = false;
                     saveOfflineSession(credential.user);
                 }
             } catch (error) {
@@ -4136,6 +4146,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
+                // Logout não deve disparar fallback offline automático.
+                skipOfflineFallbackUntilNextOnlineAuth = true;
                 await auth.signOut();
                 clearUserUi();
                 window.history.replaceState(null, '', '/login.html');
@@ -4258,6 +4270,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (user) {
+                skipOfflineFallbackUntilNextOnlineAuth = false;
+
                 if (isUsingOfflineSessionFallback && currentUserData?.uid && currentUserData.uid !== user.uid) {
                     showAuthError('Sessão local divergiu da conta online. Faça login novamente para continuar.');
                     clearOfflineSession();
