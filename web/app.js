@@ -4061,6 +4061,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isOfflineFallback = options.offlineFallback === true;
 
             currentUserData = user;
+            window.currentUser = user;
             isUsingOfflineSessionFallback = isOfflineFallback;
 
             document.getElementById('user-email-display').textContent = user?.email || '';
@@ -4089,6 +4090,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        function transitionToOnlineAuthRequiredState() {
+            currentUserData = null;
+            window.currentUser = null;
+            isUsingOfflineSessionFallback = false;
+            isUserAdmin = false;
+
+            clearUserUi();
+            setOfflineSessionBadge(false);
+            setOperationalStatus(navigator.onLine ? 'online' : 'offline');
+
+            document.getElementById('auth-overlay').classList.remove('hidden');
+            document.getElementById('main-app').classList.remove('show');
+            document.getElementById('admin-badge-display').style.display = 'none';
+            setLoginFormEnabled(navigator.onLine);
+        }
+
         async function restoreRemoteModeAfterReconnect() {
             if (!navigator.onLine || !isUsingOfflineSessionFallback || !currentUserData) {
                 return;
@@ -4098,7 +4115,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const firebaseUser = auth?.currentUser;
             if (!firebaseUser) {
-                showAuthError('Conexão restaurada. Validando sessão online...');
+                transitionToOnlineAuthRequiredState();
+                showAuthError('Conexão restaurada. Faça login online para reativar o catálogo remoto.');
                 return;
             }
 
@@ -4112,8 +4130,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 OutboxSync.processOutbox();
             } catch (error) {
                 console.warn('Falha ao restaurar sessão remota após reconexão:', error);
-                showAuthError('Conexão voltou, mas a sessão remota ainda não foi validada.');
-                setOperationalStatus('offline-session');
+                transitionToOnlineAuthRequiredState();
+                showAuthError('Conexão voltou, mas a sessão remota não pôde ser validada. Faça login novamente.');
             }
         }
 
@@ -4410,6 +4428,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else {
                 currentUserData = null;
+                window.currentUser = null;
                 isUsingOfflineSessionFallback = false;
                 isUserAdmin = false;
                 clearUserUi();
