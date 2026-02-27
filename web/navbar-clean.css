@@ -319,3 +319,9 @@ nav {
   color: #92400e;
   border: 1px solid #fcd34d;
 }
+
+.connection-status-checking {
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+}
