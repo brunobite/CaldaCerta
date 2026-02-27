@@ -47,6 +47,13 @@
         ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true)",
         ".write": "auth != null && auth.uid === $uid"
       }
+    },
+
+    "usuarios": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.token.admin === true)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }
