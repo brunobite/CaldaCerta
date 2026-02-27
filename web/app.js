@@ -916,6 +916,9 @@ document.addEventListener('DOMContentLoaded', () => {
             },
 
             async sendToFirebase(operationType, payload) {
+                if (!db) {
+                    throw new Error('Firebase Database indisponível');
+                }
                 if (!payload?.uid || !payload?.mixId) {
                     throw new Error('Payload inválido para sincronização');
                 }
@@ -1483,6 +1486,9 @@ document.addEventListener('DOMContentLoaded', () => {
         async function _savePayloadToFirebase(payload) {
             if (!currentUserData) {
                 throw new Error('Usuário não autenticado');
+            }
+            if (!db) {
+                throw new Error('Firebase Database indisponível. Verifique sua conexão com a internet.');
             }
 
             const now = new Date().toISOString();
@@ -4234,13 +4240,21 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 // Logout não deve disparar fallback offline automático.
                 skipOfflineFallbackUntilNextOnlineAuth = true;
-                await auth.signOut();
+                // Cancelar listener de conexão antes do signOut
+                if (window._cancelConnectionListener) {
+                    window._cancelConnectionListener();
+                    window._cancelConnectionListener = null;
+                }
+                if (auth) {
+                    await auth.signOut();
+                }
                 clearUserUi();
                 window.history.replaceState(null, '', '/login.html');
                 window.location.replace('/login.html');
             } catch (error) {
                 console.error('Erro ao sair:', error);
-                showToast('❌ Não foi possível sair agora. Tente novamente.', 'error');
+                // Mesmo com erro no signOut, redirecionar para tela de login
+                window.location.replace('/login.html');
             }
         }
 

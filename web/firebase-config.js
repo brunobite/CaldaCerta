@@ -31,7 +31,8 @@ if (typeof firebase !== 'undefined') {
 
   // Habilitar persistência offline do Realtime Database
   firebase.database().goOnline();
-  firebase.database().ref('.info/connected').on('value', (snap) => {
+  const _connectedRef = firebase.database().ref('.info/connected');
+  const _connectedHandler = (snap) => {
     window._firebaseConnected = !!snap.val();
     document.dispatchEvent(new CustomEvent('firebase-connection', {
       detail: { connected: window._firebaseConnected }
@@ -41,10 +42,15 @@ if (typeof firebase !== 'undefined') {
     } else {
       console.log('[Offline] Firebase desconectado - usando cache local');
     }
-  }, (error) => {
+  };
+  _connectedRef.on('value', _connectedHandler, (error) => {
     window._firebaseConnected = false;
     console.error('Erro ao monitorar conexão Firebase:', error);
   });
+  // Expor função para cancelar o listener no logout
+  window._cancelConnectionListener = () => {
+    _connectedRef.off('value', _connectedHandler);
+  };
 
   console.log('Firebase inicializado com sucesso');
 } else {

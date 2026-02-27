@@ -245,6 +245,16 @@
     return dedup;
   }
 
+  async function writeUserSearchIndex(database, uid, key, payload) {
+    const words = extractWords(`${payload.nomeComercial} ${payload.empresa} ${payload.tipoProduto}`);
+    if (words.length === 0) return;
+    const updates = {};
+    for (const word of words) {
+      updates[`produtos_usuarios_busca/${uid}/${word}/${key}`] = true;
+    }
+    await database.ref('/').update(updates);
+  }
+
   // --- API pública (compatível) ---
   async function saveUserProdutoRTDB(produto) {
     const user = getCurrentUser();
@@ -265,6 +275,12 @@
 
     await ref.set(payload);
     await cacheProducts([result]);
+    // Atualizar índice de busca para que o produto apareça nos resultados de pesquisa
+    try {
+      await writeUserSearchIndex(database, user.uid, ref.key, payload);
+    } catch (indexError) {
+      console.warn('[productsService] Falha ao atualizar índice de busca:', indexError);
+    }
     return result;
   }
 
