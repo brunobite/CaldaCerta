@@ -4432,16 +4432,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     OfflineSync.processQueue();
                     OutboxSync.processOutbox();
                 } catch (error) {
-                    // Firebase não respondeu (timeout ou falha real) — SÓ AGORA entrar em modo offline
                     console.error('Erro ao carregar dados do usuário (timeout ou falha):', error);
-                    const offlineSession = readOfflineSession();
-                    const displayName = offlineSession?.displayName || user.displayName || user.email;
-                    isUserAdmin = false;
-                    showMainAppForAuthenticatedUser(
-                        { uid: user.uid, email: user.email, displayName },
-                        { offlineFallback: true, displayName }
-                    );
-                    showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
+                    if (navigator.onLine) {
+                        // Usuário está online mas RTDB não respondeu (conexão lenta ou falha temporária).
+                        // Mostrar app em modo online — comportamento idêntico ao código anterior ao PR #97.
+                        showMainAppForAuthenticatedUser(user);
+                        showToast('⚠️ Erro ao carregar perfil. Tente recarregar.', 'warning');
+                    } else {
+                        // Usuário está offline — usar sessão local salva.
+                        const offlineSession = readOfflineSession();
+                        const displayName = offlineSession?.displayName || user.displayName || user.email;
+                        isUserAdmin = false;
+                        showMainAppForAuthenticatedUser(
+                            { uid: user.uid, email: user.email, displayName },
+                            { offlineFallback: true, displayName }
+                        );
+                        showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
+                    }
                 }
             } else {
                 currentUserData = null;
