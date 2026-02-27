@@ -2,9 +2,7 @@
 // CaldaCerta Pro - Aplicação Principal
 // Firebase é inicializado em firebase-config.js
 // ============================================
-const APP_VERSION = 'v1.2.1';
-const BUILD_NUMBER = 2; // ← INCREMENTAR A CADA DEPLOY
-const APP_FULL_VERSION = `${APP_VERSION}-build${BUILD_NUMBER}`;
+const APP_FULL_VERSION = window.APP_FULL_VERSION || 'v1.2.0-dev';
 console.log(`🌿 CaldaCerta ${APP_FULL_VERSION} iniciando...`);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -267,18 +265,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function updateConnectionStatusBadge(online, firebaseConnected) {
-            const badge = document.getElementById('connection-status-badge');
-            if (!badge) return;
-
             if (isUsingOfflineSessionFallback) {
                 setOperationalStatus(online ? 'restoring' : 'offline-session');
                 return;
             }
 
             const isConnected = online && firebaseConnected !== false;
-            badge.classList.toggle('connection-status-online', isConnected);
-            badge.classList.toggle('connection-status-offline', !isConnected);
-            badge.textContent = isConnected ? 'Online' : 'Offline';
+            setOperationalStatus(isConnected ? 'online' : 'offline');
         }
 
         function initConnectionStatusBadge() {
@@ -3943,27 +3936,17 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.removeItem(OFFLINE_SESSION_KEY);
         }
 
-        function setOfflineSessionBadge(isVisible) {
-            const legacyBadge = document.getElementById('offline-session-badge');
-            if (legacyBadge) {
-                legacyBadge.style.display = 'none';
-            }
-
-            const badge = document.getElementById('connection-status-badge');
-            if (!badge) return;
-
-            if (isVisible) {
-                badge.classList.remove('connection-status-online');
-                badge.classList.add('connection-status-offline');
-                badge.textContent = 'Offline com sessão local';
-            }
-        }
-
+        // Fonte única de verdade para o status de conexão.
+        // Valores: 'checking' | 'online' | 'offline' | 'offline-session' | 'restoring' | 'syncing'
         function setOperationalStatus(status) {
             const badge = document.getElementById('connection-status-badge');
             if (!badge) return;
 
-            badge.classList.remove('connection-status-online', 'connection-status-offline');
+            badge.classList.remove(
+                'connection-status-online',
+                'connection-status-offline',
+                'connection-status-checking'
+            );
 
             if (status === 'online') {
                 badge.classList.add('connection-status-online');
@@ -3971,9 +3954,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (status === 'checking') {
+                badge.classList.add('connection-status-checking');
+                badge.textContent = 'Verificando...';
+                return;
+            }
+
+            if (status === 'syncing') {
+                badge.classList.add('connection-status-checking');
+                badge.textContent = 'Sincronizando...';
+                return;
+            }
+
             badge.classList.add('connection-status-offline');
             if (status === 'offline-session') {
-                badge.textContent = 'Offline com sessão local';
+                badge.textContent = 'Offline (sessão local)';
                 return;
             }
             if (status === 'restoring') {
@@ -4074,7 +4069,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('auth-overlay').classList.add('hidden');
             document.getElementById('main-app').classList.add('show');
             document.getElementById('admin-badge-display').style.display = isUserAdmin ? 'inline-block' : 'none';
-            setOfflineSessionBadge(isOfflineFallback);
             setLoginFormEnabled(true);
             setOperationalStatus(isOfflineFallback ? 'offline-session' : (navigator.onLine ? 'online' : 'offline'));
 
@@ -4103,7 +4097,6 @@ document.addEventListener('DOMContentLoaded', () => {
             isUserAdmin = false;
 
             clearUserUi();
-            setOfflineSessionBadge(false);
             setOperationalStatus(navigator.onLine ? 'online' : 'offline');
 
             document.getElementById('auth-overlay').classList.remove('hidden');
@@ -4232,8 +4225,37 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        function showLogoutConfirmModal() {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('modal-logout-confirm');
+                const btnOk = document.getElementById('modal-logout-ok');
+                const btnCancel = document.getElementById('modal-logout-cancel');
+
+                if (!modal || !btnOk || !btnCancel) {
+                    // Fallback seguro caso o modal não esteja no DOM
+                    resolve(window.confirm('Deseja realmente sair?'));
+                    return;
+                }
+
+                modal.classList.remove('hidden');
+
+                const cleanup = () => {
+                    modal.classList.add('hidden');
+                    btnOk.removeEventListener('click', onOk);
+                    btnCancel.removeEventListener('click', onCancel);
+                };
+
+                const onOk = () => { cleanup(); resolve(true); };
+                const onCancel = () => { cleanup(); resolve(false); };
+
+                btnOk.addEventListener('click', onOk);
+                btnCancel.addEventListener('click', onCancel);
+            });
+        }
+
         async function handleLogoutClick() {
-            if (!confirm('Deseja realmente sair?')) {
+            const confirmed = await showLogoutConfirmModal();
+            if (!confirmed) {
                 return;
             }
 
@@ -4322,19 +4344,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // ========================================
         setupAuthUiBindings();
 
-        // CORREÇÃO OFFLINE: Se não há internet e existe sessão local salva,
-        // restaurar imediatamente sem esperar o Firebase responder
-        if (!navigator.onLine && readOfflineSession()) {
-            showAuthError('Verificando sessão...');
-            setTimeout(() => {
-                if (!currentUserData) {
-                    fallbackToOfflineSession();
-                }
-            }, 300);
-        } else {
-            setLoginFormEnabled(false);
-            showAuthError('Verificando sessão...');
-        }
+        // Estado neutro enquanto aguarda Firebase responder — sem toast antes de saber o estado real
+        setOperationalStatus('checking');
+        setLoginFormEnabled(false);
+        showAuthError('Verificando sessão...');
 
         if (!auth || typeof auth.onAuthStateChanged !== 'function') {
             authResolvedOnce = true;
@@ -4389,23 +4402,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 saveOfflineSession(user);
 
-                // CORREÇÃO DEFINITIVA OFFLINE:
-                // db.ref().once('value') não lança erro quando offline — ele trava indefinidamente.
-                // Se não há internet, entrar direto no app com sessão local sem consultar o banco.
-                if (!navigator.onLine) {
-                    const offlineSession = readOfflineSession();
-                    const displayName = offlineSession?.displayName || user.displayName || user.email;
-                    isUserAdmin = false;
-                    showMainAppForAuthenticatedUser(
-                        { uid: user.uid, email: user.email, displayName },
-                        { offlineFallback: true, displayName }
-                    );
-                    showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
-                    return;
-                }
-
+                // Tentar Firebase com timeout de 5 s — só mostrar modo offline se realmente falhar.
+                // Isso evita o toast falso de "sessão offline" quando a rede está disponível.
+                setOperationalStatus('checking');
+                const FIREBASE_TIMEOUT_MS = 5000;
                 try {
-                    const snapshot = await db.ref('users/' + user.uid).once('value');
+                    const snapshot = await Promise.race([
+                        db.ref('users/' + user.uid).once('value'),
+                        new Promise((_, reject) =>
+                            setTimeout(
+                                () => reject(new Error('Firebase timeout após ' + FIREBASE_TIMEOUT_MS + 'ms')),
+                                FIREBASE_TIMEOUT_MS
+                            )
+                        )
+                    ]);
                     const userData = snapshot.val();
                     const tokenResult = await auth.currentUser.getIdTokenResult();
                     isUserAdmin = tokenResult?.claims?.admin === true;
@@ -4418,27 +4428,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     showMainAppForAuthenticatedUser(user);
                     showToast('✅ Bem-vindo(a), ' + (userData?.name || user.email) + '!', 'success');
 
-                    if (navigator.onLine) {
-                        syncPendingData();
-                        OfflineSync.processQueue();
-                        OutboxSync.processOutbox();
-                    }
+                    syncPendingData();
+                    OfflineSync.processQueue();
+                    OutboxSync.processOutbox();
                 } catch (error) {
-                    console.error('Erro ao carregar dados do usuário:', error);
-                    // Fallback para o caso raro de perder conexão exatamente durante o carregamento
-                    if (!navigator.onLine) {
-                        const offlineSession = readOfflineSession();
-                        const displayName = offlineSession?.displayName || user.displayName || user.email;
-                        isUserAdmin = false;
-                        showMainAppForAuthenticatedUser(
-                            { uid: user.uid, email: user.email, displayName },
-                            { offlineFallback: true, displayName }
-                        );
-                        showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
-                    } else {
-                        showMainAppForAuthenticatedUser(user);
-                        showToast('⚠️ Erro ao carregar perfil. Tente recarregar.', 'warning');
-                    }
+                    // Firebase não respondeu (timeout ou falha real) — SÓ AGORA entrar em modo offline
+                    console.error('Erro ao carregar dados do usuário (timeout ou falha):', error);
+                    const offlineSession = readOfflineSession();
+                    const displayName = offlineSession?.displayName || user.displayName || user.email;
+                    isUserAdmin = false;
+                    showMainAppForAuthenticatedUser(
+                        { uid: user.uid, email: user.email, displayName },
+                        { offlineFallback: true, displayName }
+                    );
+                    showToast('📴 Sessão local restaurada. Operando em modo offline.', 'warning');
                 }
             } else {
                 currentUserData = null;
@@ -4446,7 +4449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isUsingOfflineSessionFallback = false;
                 isUserAdmin = false;
                 clearUserUi();
-                setOfflineSessionBadge(false);
+                setOperationalStatus(navigator.onLine ? 'online' : 'offline');
                 document.getElementById('auth-overlay').classList.remove('hidden');
                 document.getElementById('main-app').classList.remove('show');
                 document.getElementById('admin-badge-display').style.display = 'none';

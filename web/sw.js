@@ -9,6 +9,7 @@ const ASSETS_TO_CACHE = [
   '/login.html',
   '/offline.html',
   '/app.js',
+  '/version.js',
   '/api-config.js',
   '/firebase-config.js',
   '/productsService.js',

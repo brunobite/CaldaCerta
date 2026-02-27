@@ -1,0 +1,53 @@
+name: Versão Automática por PR
+
+# Dispara quando um PR é fechado (mergeado ou não) no branch main
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  version-on-merge:
+    # Só executa se o PR foi efetivamente mergeado (não apenas fechado sem merge)
+    if: github.event.pull_request.merged == true
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do branch main
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+
+      - name: Injetar versão nos arquivos
+        run: |
+          PR_NUM="${{ github.event.pull_request.number }}"
+          VERSION="v1.2.${PR_NUM}"
+          echo "Versão gerada: ${VERSION} (PR #${PR_NUM})"
+
+          # Atualizar web/version.js com a versão do PR
+          cat > web/version.js << EOF
+// GERADO AUTOMATICAMENTE — NÃO editar manualmente.
+// Versão injetada pelo GitHub Actions ao mergear PR #${PR_NUM}.
+// Formato: v1.2.{número_do_PR}
+window.APP_FULL_VERSION = '${VERSION}';
+EOF
+
+          # Incrementar CACHE_VERSION no sw.js para invalidar cache do PWA nos dispositivos
+          sed -i "s/const CACHE_VERSION = [0-9]*/const CACHE_VERSION = ${PR_NUM}/" web/sw.js
+
+          echo "Arquivos atualizados:"
+          head -4 web/version.js
+          grep "CACHE_VERSION" web/sw.js
+
+      - name: Commit e push da versão
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/version.js web/sw.js
+          # Só commita se houver mudanças reais (evita commits vazios)
+          git diff --staged --quiet || git commit -m "chore: versão automática v1.2.${{ github.event.pull_request.number }} (PR #${{ github.event.pull_request.number }})"
+          git push origin main
