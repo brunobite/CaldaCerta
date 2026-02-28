@@ -3903,6 +3903,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let authBootstrapTimedOut = false;
         let isUsingOfflineSessionFallback = false;
         let skipOfflineFallbackUntilNextOnlineAuth = false;
+        let isLoginInProgress = false;
         let lastLoginButtonLabel = '<i class="fas fa-sign-in-alt"></i> Entrar';
         const OFFLINE_SESSION_KEY = 'offlineSession';
 
@@ -4035,6 +4036,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (isEnabled) {
+                if (isLoginInProgress) {
+                    loginButton.innerHTML = '<span class="loading"></span> Entrando...';
+                    return;
+                }
                 loginButton.innerHTML = lastLoginButtonLabel;
                 return;
             }
@@ -4163,9 +4168,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async function handleLogin(e) {
             e.preventDefault();
+
+            if (isLoginInProgress) {
+                console.warn('[Auth] Ignorando submit duplicado de login');
+                return;
+            }
+
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
             const btn = e.target.querySelector('button');
+
+            console.log('[Auth] Tentativa de login iniciada', {
+                email,
+                online: navigator.onLine,
+                authResolvedOnce
+            });
 
             if (!navigator.onLine) {
                 setLoginFormEnabled(false);
@@ -4173,11 +4190,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            isLoginInProgress = true;
             btn.disabled = true;
             btn.innerHTML = '<span class="loading"></span> Entrando...';
 
             try {
                 const credential = await auth.signInWithEmailAndPassword(email, password);
+                console.log('[Auth] signInWithEmailAndPassword sucesso', {
+                    uid: credential?.user?.uid || null
+                });
                 // Salvar sessão offline imediatamente após login bem-sucedido
                 // não depender apenas do onAuthStateChanged para isso
                 if (credential?.user) {
@@ -4185,6 +4206,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveOfflineSession(credential.user);
                 }
             } catch (error) {
+                isLoginInProgress = false;
+                console.error('[Auth] signInWithEmailAndPassword erro', error);
                 showAuthError(getAuthErrorMessage(error.code));
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Entrar';
@@ -4344,6 +4367,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // ========================================
         setupAuthUiBindings();
 
+        console.log('[Bootstrap] Inicialização de autenticação iniciada', {
+            appVersion: APP_FULL_VERSION,
+            userAgent: navigator.userAgent,
+            online: navigator.onLine
+        });
+
         // Estado neutro enquanto aguarda Firebase responder — sem toast antes de saber o estado real
         setOperationalStatus('checking');
         setLoginFormEnabled(false);
@@ -4379,6 +4408,12 @@ document.addEventListener('DOMContentLoaded', () => {
         auth.onAuthStateChanged(async (user) => {
             clearTimeout(authBootstrapTimeout);
             authResolvedOnce = true;
+            console.log('[Auth] onAuthStateChanged disparado', {
+                uid: user?.uid || null,
+                email: user?.email || null,
+                offlineFallback: isUsingOfflineSessionFallback,
+                online: navigator.onLine
+            });
 
             if (authBootstrapTimedOut) {
                 console.info('Autenticação respondeu após timeout de bootstrap');
@@ -4427,6 +4462,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     showMainAppForAuthenticatedUser(user);
                     showToast('✅ Bem-vindo(a), ' + (userData?.name || user.email) + '!', 'success');
+                    console.log('[Auth] Usuário autenticado e app principal exibido', {
+                        uid: user.uid,
+                        isAdmin: isUserAdmin
+                    });
 
                     syncPendingData();
                     OfflineSync.processQueue();
@@ -4451,6 +4490,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             } else {
+                isLoginInProgress = false;
                 currentUserData = null;
                 window.currentUser = null;
                 isUsingOfflineSessionFallback = false;
@@ -4467,6 +4507,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 updateLoginOfflineWarning();
             }
+
+            if (user) {
+                isLoginInProgress = false;
+            }
+            setLoginFormEnabled(navigator.onLine || !!user);
         });
 
         console.log('🌿 CaldaCerta Pro com Sistema de Login - PRONTO!');

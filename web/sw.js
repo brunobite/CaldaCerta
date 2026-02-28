@@ -1,7 +1,8 @@
 // ATENÇÃO: Incrementar CACHE_VERSION a cada deploy, junto com BUILD_NUMBER em app.js
-const CACHE_VERSION = 5; // ← INCREMENTAR A CADA DEPLOY
+const CACHE_VERSION = 6; // ← INCREMENTAR A CADA DEPLOY
 const CACHE_NAME = `calda-certa-v${CACHE_VERSION}`;
 const APP_SHELL = '/index.html';
+const OFFLINE_FALLBACK = '/offline.html';
 
 const ASSETS_TO_CACHE = [
   '/',
@@ -48,6 +49,16 @@ function isStaticCdnRequest(url) {
   return staticHosts.includes(url.hostname);
 }
 
+function createFallbackResponse() {
+  return new Response(
+    '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><title>CaldaCerta offline</title></head><body>Aplicativo indisponível no momento. Tente novamente.</body></html>',
+    {
+      status: 503,
+      headers: { 'Content-Type': 'text/html; charset=UTF-8' }
+    }
+  );
+}
+
 async function cacheFirstWithFallback(request, fallbackPath = APP_SHELL) {
   const cachedResponse = await caches.match(request);
   if (cachedResponse) {
@@ -64,11 +75,15 @@ async function cacheFirstWithFallback(request, fallbackPath = APP_SHELL) {
   } catch (error) {
     const fallback = await caches.match(fallbackPath);
     if (fallback) return fallback;
-    throw error;
+
+    const offlineFallback = await caches.match(OFFLINE_FALLBACK);
+    if (offlineFallback) return offlineFallback;
+
+    return createFallbackResponse();
   }
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, fallbackPath = APP_SHELL) {
   try {
     const networkResponse = await fetch(request);
     if (networkResponse && networkResponse.ok) {
@@ -80,15 +95,29 @@ async function networkFirst(request) {
     const cachedResponse = await caches.match(request);
     if (cachedResponse) return cachedResponse;
 
-    const shell = await caches.match(APP_SHELL);
+    const shell = await caches.match(fallbackPath);
     if (shell) return shell;
-    throw error;
+
+    const offlineFallback = await caches.match(OFFLINE_FALLBACK);
+    if (offlineFallback) return offlineFallback;
+
+    return createFallbackResponse();
   }
 }
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await Promise.allSettled(
+        ASSETS_TO_CACHE.map(async (asset) => {
+          try {
+            await cache.add(asset);
+          } catch (error) {
+            console.warn('[SW] Falha ao pré-cachear asset:', asset, error);
+          }
+        })
+      );
+    })
   );
   self.skipWaiting();
 });
@@ -123,7 +152,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    event.respondWith(cacheFirstWithFallback(request, APP_SHELL));
+    event.respondWith(networkFirst(request, APP_SHELL));
     return;
   }
 
